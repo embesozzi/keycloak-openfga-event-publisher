@@ -1,0 +1,111 @@
+version: '3.8'
+
+volumes:
+  postgres_data:
+    driver: local
+
+services:
+  postgres:
+    image: postgres:14
+    container_name: postgres
+ #   volumes:
+ #     - postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: password
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U keycloak" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5  
+    ports:
+      - 5433:5432
+  keycloak:
+    image: quay.io/keycloak/keycloak:19.0.2
+    container_name: keycloak
+    command:
+      - start-dev
+    environment:
+      KEYCLOAK_USER: admin
+      KEYCLOAK_PASSWORD: password
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: password
+      KC_DB_URL_HOST: postgres
+      KC_DB_URL_DATABASE: keycloak
+      KC_DB_SCHEMA: public
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: password
+      KC_HOSTNAME_STRICT: 'false'
+      KC_HTTP_ENABLED: 'true'
+      KC_HOSTNAME_ADMIN: localhost
+      KC_HOSTNAME: localhost
+      KC_SPI_EVENTS_LISTENER_OPENFGA_API_URL: http://openfga:8080
+      KC_LOG_LEVEL: INFO, com.twogenidentity.keycloak:debug
+    ports:
+      - 9080:8080
+      - 8443:8443
+    volumes:
+      - $PWD/target/keycloak-openfga-event-publisher-1.0.0-jar-with-dependencies.jar:/opt/keycloak/providers/keycloak-openfga-event-publisher-1.0.0.jar
+    depends_on:
+      - postgres
+#        condition: service_completed_successfully
+#      openfga:
+#        condition: service_completed_successfully
+    networks:
+      default:
+        aliases:
+          -  keycloak
+
+  postgres-openfga:
+    image: postgres:14
+    container_name: postgres-openfga
+    command: postgres -c 'max_connections=100'
+    networks:
+      - default
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  migrate:
+    depends_on:
+      postgres:
+        condition: service_healthy
+    image: openfga/openfga:v1.3.1
+    container_name: migrate
+    environment:
+      - OPENFGA_DATASTORE_ENGINE=postgres
+      - OPENFGA_DATASTORE_URI=postgres://postgres:password@postgres-openfga:5432/postgres?sslmode=disable
+    command: migrate
+    networks:
+      - default
+  
+  openfga:
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    image: openfga/openfga:v1.3.1
+    container_name: openfga
+    command: run
+    environment:
+      - OPENFGA_DATASTORE_ENGINE=postgres
+      - OPENFGA_DATASTORE_URI=postgres://postgres:password@postgres-openfga:5432/postgres?sslmode=disable
+      - OPENFGA_DATASTORE_MAX_OPEN_CONNS=100
+#    healthcheck:
+#      interval: 5s
+#      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+#      timeout: 5s
+#      retries: 5  
+    networks:
+      - default
+    ports:
+      - "8080:8080" #http
+      - "8081:8081" #grpc
+      - "3000:3000" #playground

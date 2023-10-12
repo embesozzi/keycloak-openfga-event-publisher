@@ -10,6 +10,7 @@ import dev.openfga.sdk.errors.FgaInvalidParameterException;
 import com.twogenidentity.keycloak.event.EventParser;
 import org.jboss.logging.Logger;
 import org.keycloak.Config;
+import org.keycloak.utils.StringUtil;
 
 import java.time.Duration;
 import java.util.concurrent.ExecutionException;
@@ -37,8 +38,8 @@ public class OpenFgaClientHandler {
                 .connectTimeout(Duration.ofSeconds(5))
                 .readTimeout(Duration.ofSeconds(5));
 
-        if(!getOpenFgaOpenStoreId().isEmpty()
-                && !getOpenFgaAuthorizationModelId().isEmpty()) {
+        if(StringUtil.isNotBlank(getOpenFgaOpenStoreId())
+                && StringUtil.isNotBlank(getOpenFgaAuthorizationModelId())) {
             configuration.storeId(getOpenFgaOpenStoreId());
             configuration.authorizationModelId(getOpenFgaAuthorizationModelId());
             this.isClientInitialized = true;
@@ -51,31 +52,31 @@ public class OpenFgaClientHandler {
 
     public void publish(String eventId , EventParser event) throws FgaInvalidParameterException, ExecutionException, InterruptedException {
         if(!this.isClientInitialized && !this.discoverClientConfiguration()) {
-            LOG.error("[OpenFgaEventPublisher] Unable to initialized client for event " + eventId);
+            LOG.errorf("Unable to initialized OpenFga client. Discarding  event %s, %s",  eventId, event.toString());
         }
         else {
             ClientWriteRequest request  = fgaHelper.toClientWriteRequest(event);
-            if(!request.getWrites().isEmpty() || !request.getDeletes().isEmpty()) {
-                LOG.debug("[OpenFgaEventPublisher] Publishing event id: " + eventId + " event: " + event.toString());
+            if(fgaHelper.isAvailableClientRequest(request)) {
+                LOG.debugf("Publishing event id %", eventId);
                 var response = fgaClient.write(request, this.clientWriteOptions).get();
-                LOG.debug("[OpenFgaEventPublisher] Successfully sent tuple key to OpenFga, response: " + response);
+                LOG.debugf("Successfully sent tuple key to OpenFga, response: %s", response);
             }
         }
     }
 
     private boolean discoverClientConfiguration() throws FgaInvalidParameterException, ExecutionException, InterruptedException {
-        LOG.info("[OpenFgaEventPublisher] Discover store and authorization model");
+        LOG.info("Discover store and authorization model");
         ListStoresResponse stores = fgaClient.listStores().get();
         if(!stores.getStores().isEmpty()) {
            Store store = stores.getStores().get(0);
-           LOG.info("[OpenFgaEventPublisher] Found store id:" + store.getId());
+           LOG.infof("Found store id: %s", store.getId());
            this.fgaClient.setStoreId(store.getId());
            ReadAuthorizationModelsResponse authorizationModels = fgaClient.readAuthorizationModels().get();
            if(authorizationModels.getAuthorizationModels().size() > 0) {
                AuthorizationModel model = authorizationModels.getAuthorizationModels().get(0);
-               LOG.info("[OpenFgaEventPublisher] Found authorization model id:" + model.getId());
+               LOG.infof("Found authorization model id: %s", model.getId());
                this.fgaClient.setAuthorizationModelId(model.getId());
-               fgaHelper.loadModel(model);
+               this.fgaHelper.loadModel(model);
                this.isClientInitialized = true;
            }
         }
@@ -87,10 +88,10 @@ public class OpenFgaClientHandler {
     }
 
     public String getOpenFgaOpenStoreId() {
-        return config.get(OPENFGA_STORE_ID);
+        return config.get(OPENFGA_STORE_ID) != null ? config.get(OPENFGA_STORE_ID) : "";
     }
 
     public String getOpenFgaAuthorizationModelId() {
-        return config.get(OPENFGA_AUTHORIZATION_MODEL_ID);
+        return config.get(OPENFGA_AUTHORIZATION_MODEL_ID) != null? config.get(OPENFGA_AUTHORIZATION_MODEL_ID) : "";
     }
 }

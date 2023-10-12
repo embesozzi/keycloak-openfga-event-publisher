@@ -19,19 +19,27 @@ public class OpenFgaHelper {
     private AuthorizationModel model;
     private Map<String, String> modelTypeObjectAndRelation;
 
-    public void loadModel(AuthorizationModel model) {
-        this.model = model;
-        loadModelAsTypeObjectRelationshipMap();
+    public OpenFgaHelper() {
+        this.modelTypeObjectAndRelation = new HashMap<>();
     }
 
-    private Boolean isTypeDefinitionHandled(String eventObjectType) {
-        return this.model.getTypeDefinitions().stream()
+    public void loadModel(AuthorizationModel model) {
+        this.model = model;
+        this.loadModelAsTypeObjectRelationshipMap();
+    }
+
+    private Boolean isTypeDefinitionInModel(String eventObjectType) {
+        return !this.model.getTypeDefinitions().stream()
                 .filter(r -> r.getType().equalsIgnoreCase(eventObjectType))
                 .findFirst().isEmpty();
     }
 
+    private Boolean isRelationAvailableInModel(String typeDefinition, String objectType) {
+        return this.modelTypeObjectAndRelation.containsKey(typeDefinition + objectType);
+    }
+
     private String getRelationFromModel(String typeDefinition, String objectType){
-        return modelTypeObjectAndRelation.get(typeDefinition + objectType); // Easy way to return the relation
+        return this.modelTypeObjectAndRelation.get(typeDefinition + objectType); // Easy way to return the relation
     }
 
     public ClientWriteRequest toClientWriteRequest(EventParser event) {
@@ -42,17 +50,19 @@ public class OpenFgaHelper {
         String eventUserType = event.getEventUserType();
         String eventUserId   = event.getTranslateUserId();
 
-        // Check if the authorization model is prepared to handle
-        // this object type a.k.a TypeDefinition
-        if(isTypeDefinitionHandled(eventObjectType)) {
-            // Obtain the relation based the event objectType and eventUserType
-            // For now, this combination is UNIQUE in the authorization model
+        // Check if the authorization model handles this object type a.k.a TypeDefinition
+        // Check if we have the relation for this object type and user type
+        if(isTypeDefinitionInModel(eventObjectType)
+            && isRelationAvailableInModel(eventObjectType, eventUserType)) {
+
             String relation = getRelationFromModel(eventObjectType, eventUserType);
 
             ClientTupleKey tuple = new ClientTupleKey()
                     .user(eventUserType + ":" +  eventUserId)
                     .relation(relation)
                     ._object(eventObjectType +":"+ eventObjectId);
+
+            LOG.debugf("Tuple %s %s %s",  tuple.getUser(), tuple.getRelation(), tuple.getObject());
 
             if(event.isWriteOperation()) {
                 client.writes(List.of(tuple));
@@ -62,13 +72,13 @@ public class OpenFgaHelper {
             }
         }
         else {
-            LOG.warn("[OpenFgaEventPublisher] Event not handled in OpenFGA, event: " + eventObjectType + " is not present in model.");
+            LOG.warnf("Event not handled in OpenFGA. Event: %s %s is not present in model %s.", eventObjectType, eventUserType, this.modelTypeObjectAndRelation);
         }
         return client;
     }
 
     private void loadModelAsTypeObjectRelationshipMap(){
-        this.modelTypeObjectAndRelation = new HashMap<>();
+        LOG.debugf("Loading internal model");
         for (TypeDefinition typeDef : this.model.getTypeDefinitions()) {
             for (Map.Entry<String, Userset> us : typeDef.getRelations().entrySet()) {
                 if (typeDef.getMetadata() != null
@@ -80,6 +90,11 @@ public class OpenFgaHelper {
                 }
             }
         }
-        LOG.debug("[OpenFgaEventPublisher] Internal model as Map(TypeObject:Relation): " + modelTypeObjectAndRelation);
+        LOG.debugf("Internal model as Map(TypeObject:Relation): %s",  this.modelTypeObjectAndRelation);
+    }
+
+    public Boolean isAvailableClientRequest(ClientWriteRequest request) {
+        return ((request.getWrites() != null && !request.getWrites().isEmpty())
+                || (request.getDeletes() !=null && !request.getDeletes().isEmpty()));
     }
 }

@@ -17,24 +17,22 @@ public class OpenFgaEventListenerProvider implements EventListenerProvider {
 	private KeycloakSession session;
 
 	public OpenFgaEventListenerProvider(OpenFgaClientHandler client, KeycloakSession session) {
-		LOG.info("[OpenFgaEventPublisher] OpenFgaEventListenerProvider initializing...");
 		this.client = client;
 		this.session = session;
 	}
 
 	@Override
 	public void onEvent(Event event) {
-		LOG.debug("[OpenFgaEventPublisher] Discarding onEvent type: " + event.getType().toString());
+		LOG.debug("Discarding onEvent() type: " + event.getType().toString());
 	}
 
 	@Override
 	public void onEvent(AdminEvent adminEvent, boolean includeRepresentation) {
-		LOG.debug("[OpenFgaEventPublisher] onEvent Admin received events");
+		LOG.debugf("Admin event received onEvent(): %s ", adminEvent.toString());
 
 		try {
-			LOG.debugf("[OpenFgaEventPublisher] admin event: " + adminEvent.toString());
 			EventParser event = new EventParser(adminEvent, session);
-			LOG.debugf("[OpenFgaEventPublisher] event received: " + event.toString());
+			LOG.debugf("Event parsed: %s ", event.toString());
 			client.publish(adminEvent.getId(), event);
 		} catch (IllegalArgumentException e) {
 			LOG.warn(e.getMessage());

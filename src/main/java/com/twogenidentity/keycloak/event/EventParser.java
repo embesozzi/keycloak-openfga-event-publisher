@@ -46,7 +46,7 @@ public class EventParser {
             case GROUP_MEMBERSHIP:
                 return OBJECT_TYPE_GROUP;
             default:
-                throw new IllegalArgumentException("Event is not handled, id:" + event.getId() + " resource name: " + event.getResourceType().name());
+                throw new IllegalArgumentException("Event is not handled, id:" + event.getId() + " resource: " + event.getResourceType().name());
         }
     }
 
@@ -122,7 +122,6 @@ public class EventParser {
     }
 
     public String findRoleNameInRealm(String roleId)  {
-        LOG.debug("Finding role name by role id: " +  roleId);
         return session.getContext().getRealm().getRoleById(roleId).getName();
     }
 

@@ -1,0 +1,63 @@
+name: Release
+
+on:
+  push:
+    tags:
+       - 'v[0-9]+.[0-9]+.[0-9]+'
+
+jobs:
+  build-upload-release:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write 
+      contents: write
+      discussions: write
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Get version from tag
+      id: version
+      run: echo ::set-output name=number::$(echo $GITHUB_REF | cut -d / -f 3 | cut -d / -f 3 | sed -e 's/^v//') 
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v3
+      with:
+        distribution: 'temurin'
+        java-version: 17
+
+    - name: Get jar name
+      id: get_name
+      run: echo "::set-output name=name::$(mvn help:evaluate -Dexpression=project.artifactId -q -DforceStdout)"
+
+    - name: Build with maven
+      run: mvn clean package
+    
+    - name: Create changelog text
+      id: changelog
+      uses: loopwerk/tag-changelog@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        exclude_types: other,doc,chore
+        config_file: .github/tag-changelog-config.js        
+    
+    - name: Create release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ steps.version.outputs.number }}
+        release_name: ${{ steps.version.outputs.number }}
+        body: ${{ steps.changelog.outputs.changes }}
+        draft: false
+        prerelease: false
+
+    - name: Upload JAR to release
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./target/${{ steps.get_name.outputs.name }}.jar
+        asset_name: ${{ steps.get_name.outputs.name }}.jar
+        asset_content_type: application/java-archive

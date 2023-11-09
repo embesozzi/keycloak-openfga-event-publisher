@@ -1,8 +1,8 @@
 version: '3.8'
 
-volumes:
-  postgres_data:
-    driver: local
+# volumes:
+#  postgres_data:
+#    driver: local
 
 services:
   postgres:
@@ -46,12 +46,12 @@ services:
       - 9080:8080
       - 8443:8443
     volumes:
-      - $PWD/target/keycloak-openfga-event-publisher-1.0.0-jar-with-dependencies.jar:/opt/keycloak/providers/keycloak-openfga-event-publisher-1.0.0.jar
+      - $PWD/target/keycloak-openfga-event-publisher.jar:/opt/keycloak/providers/keycloak-openfga-event-publisher.jar
     depends_on:
-      - postgres
-#        condition: service_completed_successfully
-#      openfga:
-#        condition: service_completed_successfully
+      postgres:
+        condition: service_completed_successfully
+      openfga:
+        condition: service_completed_successfully
     networks:
       default:
         aliases:
@@ -98,11 +98,11 @@ services:
       - OPENFGA_DATASTORE_ENGINE=postgres
       - OPENFGA_DATASTORE_URI=postgres://postgres:password@postgres-openfga:5432/postgres?sslmode=disable
       - OPENFGA_DATASTORE_MAX_OPEN_CONNS=100
-#    healthcheck:
-#      interval: 5s
-#      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
-#      timeout: 5s
-#      retries: 5  
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/grpc_health_probe", "-addr=openfga:8081"]
+      interval: 3s
+      timeout: 30s
+      retries: 3
     networks:
       - default
     ports:

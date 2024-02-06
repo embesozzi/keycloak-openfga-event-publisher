@@ -1,8 +1,8 @@
 package com.twogenidentity.keycloak.utils;
 
 import com.twogenidentity.keycloak.event.EventParser;
-import dev.openfga.sdk.api.client.ClientTupleKey;
-import dev.openfga.sdk.api.client.ClientWriteRequest;
+import dev.openfga.sdk.api.client.model.ClientTupleKey;
+import dev.openfga.sdk.api.client.model.ClientWriteRequest;
 import dev.openfga.sdk.api.model.AuthorizationModel;
 import dev.openfga.sdk.api.model.RelationReference;
 import dev.openfga.sdk.api.model.TypeDefinition;

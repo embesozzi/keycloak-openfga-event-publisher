@@ -1,8 +1,8 @@
 package com.twogenidentity.keycloak.service;
 
 import com.twogenidentity.keycloak.utils.OpenFgaHelper;
-import dev.openfga.sdk.api.client.ClientWriteRequest;
 import dev.openfga.sdk.api.client.OpenFgaClient;
+import dev.openfga.sdk.api.client.model.ClientWriteRequest;
 import dev.openfga.sdk.api.configuration.ClientConfiguration;
 import dev.openfga.sdk.api.configuration.ClientWriteOptions;
 import dev.openfga.sdk.api.model.*;

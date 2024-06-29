@@ -22,7 +22,7 @@ services:
     ports:
       - 5433:5432
   keycloak:
-    image: quay.io/keycloak/keycloak:19.0.2
+    image: quay.io/keycloak/keycloak:25.0.1
     container_name: keycloak
     command:
       - start-dev
@@ -78,7 +78,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    image: openfga/openfga:v1.3.1
+    image: openfga/openfga:v1.5.5
     container_name: migrate
     environment:
       - OPENFGA_DATASTORE_ENGINE=postgres
@@ -91,7 +91,7 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
-    image: openfga/openfga:v1.3.1
+    image: openfga/openfga:v1.5.5
     container_name: openfga
     command: run
     environment:

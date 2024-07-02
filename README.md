@@ -119,5 +119,8 @@ Enable the Keycloak OpenFGA Event Listener extension in Keycloak:
 # Test Cases
 The test cases are available in the workshop:
 
-* Workshop: https://github.com/embesozzi/keycloak-openfga-workshop --> This new extension and simplified architecture will be described there in the future.
+* Workshop: https://github.com/embesozzi/keycloak-openfga-workshop
+* Articles:
+    * <a href="https://embesozzi.medium.com/mastering-access-control-implementing-low-code-authorization-based-on-rebac-and-decoupling-pattern-f6f54f70115e">Mastering Access Control: Low-Code Authorization with ReBAC, Decoupling Patterns and Policy as Code
+    * <a href="https://medium.com/@embesozzi/keycloak-integration-with-openfga-based-on-zanzibar-for-fine-grained-authorization-at-scale-d3376de00f9a">Keycloak integration with OpenFGA based on Zanzibar for Fine-Grained Authorization at Scale (ReBAC)
 

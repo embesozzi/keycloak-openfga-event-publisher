@@ -97,9 +97,9 @@ For Docker-based setups mount or copy the jar to
 ## Module Configuration
 The following properties can be set via environment variables following the Keycloak specs, thus each variable MUST use the prefix `KC_SPI_EVENTS_LISTENER_OPENFGA_EVENTS_PUBLISHER`.
 
-* `KC_SPI_EVENTS_LISTENER_OPENFGA_EVENTS_PUBLISHER_API_URL`: The `openfgaApiUrl` is the URI of the OpenFGA Server. If this variable is empty, the extension will use the default value `http://openfga:8080` for demo purposes only.
-
-* Optional `KC_SPI_EVENTS_LISTENER_OPENFGA_EVENTS_PUBLISHER__STORE_ID` and `KC_SPI_EVENTS_LISTENER_OPENFGA_EVENTS_PUBLISHER_AUTHORIZATION_MODEL_ID` : The `openfgaStoreId` and the `openfgaAuthorizationModelId`  are the store and authorization model identifiers in the OpenFGA server. If not provided, the extension will attempt to discovery them.
+* `KC_SPI_EVENTS_LISTENER_OPENFGA_EVENTS_PUBLISHER_OPENFGA_API_URL`: The `openfgaApiUrl` is the URI of the OpenFGA Server. If this variable is empty, the extension will use the default value `http://openfga:8080` for demo purposes only.
+* Optional `KC_SPI_EVENTS_LISTENER_OPENFGA_EVENTS_PUBLISHER_OPENFGA_STORE_ID` and `KC_SPI_EVENTS_LISTENER_OPENFGA_EVENTS_PUBLISHER_OPENFGA_AUTHORIZATION_MODEL_ID`: The `openfgaStoreId` and the `openfgaAuthorizationModelId`  are the store and authorization model identifiers in the OpenFGA server. If not provided, the extension will attempt to discovery them.
+* Optional `KC_SPI_EVENTS_LISTENER_OPENFGA_EVENTS_PUBLISHER_OPENFGA_API_TOKEN`: The `openfgaApiToken` to authenticate with the OpenFGA server.
 
 You may want to check [docker-compose.yml](docker-compose.yml) as an example.
 

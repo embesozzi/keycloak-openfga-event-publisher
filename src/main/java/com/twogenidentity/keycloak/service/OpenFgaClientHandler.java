@@ -3,8 +3,10 @@ package com.twogenidentity.keycloak.service;
 import com.twogenidentity.keycloak.utils.OpenFgaHelper;
 import dev.openfga.sdk.api.client.OpenFgaClient;
 import dev.openfga.sdk.api.client.model.ClientWriteRequest;
+import dev.openfga.sdk.api.configuration.ApiToken;
 import dev.openfga.sdk.api.configuration.ClientConfiguration;
 import dev.openfga.sdk.api.configuration.ClientWriteOptions;
+import dev.openfga.sdk.api.configuration.Credentials;
 import dev.openfga.sdk.api.model.*;
 import dev.openfga.sdk.errors.FgaInvalidParameterException;
 import com.twogenidentity.keycloak.event.EventParser;
@@ -24,9 +26,10 @@ public class OpenFgaClientHandler {
 
     private final ClientWriteOptions clientWriteOptions;
 
-    protected static final String OPENFGA_API_URL = "openfgaApiUrl";
-    protected static final String OPENFGA_STORE_ID = "openfgaStoreId";
-    protected static final String OPENFGA_AUTHORIZATION_MODEL_ID = "openfgaAuthorizationModelId";
+    protected static final String OPENFGA_API_URL = "openfga-api-url";
+    protected static final String OPENFGA_API_TOKEN = "openfga-api-token";
+    protected static final String OPENFGA_STORE_ID = "openfga-store-id";
+    protected static final String OPENFGA_AUTHORIZATION_MODEL_ID = "openfga-authorization-model-id";
 
     private static final Logger LOG = Logger.getLogger(OpenFgaClientHandler.class);
 
@@ -37,6 +40,13 @@ public class OpenFgaClientHandler {
                 .apiUrl(getOpenFgaApiUrl())
                 .connectTimeout(Duration.ofSeconds(5))
                 .readTimeout(Duration.ofSeconds(5));
+
+        if(StringUtil.isNotBlank(getOpenFgaApiToken())) {
+            LOG.info("API Token provided in config, will use it for authentication with OpenFGA");
+            ApiToken token = new ApiToken(getOpenFgaApiToken());
+            Credentials credentials = new Credentials(token);
+            configuration.credentials(credentials);
+        }
 
         if(StringUtil.isNotBlank(getOpenFgaOpenStoreId())
                 && StringUtil.isNotBlank(getOpenFgaAuthorizationModelId())) {
@@ -85,6 +95,10 @@ public class OpenFgaClientHandler {
 
     public String getOpenFgaApiUrl() {
         return config.get(OPENFGA_API_URL) != null ? config.get(OPENFGA_API_URL) : "http://openfga:8080";
+    }
+
+    public String getOpenFgaApiToken() {
+        return config.get(OPENFGA_API_TOKEN) != null ? config.get(OPENFGA_API_TOKEN) : "";
     }
 
     public String getOpenFgaOpenStoreId() {

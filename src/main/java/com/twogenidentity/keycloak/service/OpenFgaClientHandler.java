@@ -13,7 +13,6 @@ import dev.openfga.sdk.errors.FgaInvalidParameterException;
 import org.jboss.logging.Logger;
 import org.keycloak.Config;
 import org.keycloak.models.KeycloakSession;
-import org.keycloak.models.RealmModel;
 import org.keycloak.utils.StringUtil;
 
 import java.time.Duration;
@@ -25,12 +24,12 @@ public class OpenFgaClientHandler {
 
     protected final Config.Scope config;
     protected final KeycloakSession session;
-    private final Map<String, OpenFgaClient> fgaClients= new ConcurrentHashMap<>();
+    private final Map<String, OpenFgaClient> fgaClients = new ConcurrentHashMap<>();
     private final OpenFgaHelper fgaHelper;
     private final ClientWriteOptions clientWriteOptions;
 
     protected static final String OPENFGA_CREDENTIALS_METHOD = "openfga-credentials-method";
-    protected static final String OPENFGA_API_URL = "kc.spi-events-listener-openfga-events-publisher-openfga-api-url";
+    protected static final String OPENFGA_API_URL = "openfga-api-url";
     protected static final String OPENFGA_API_TOKEN = "openfga-api-token";
     protected static final String OPENFGA_CLIENT_ID = "openfga-client-id";
     protected static final String OPENFGA_CLIENT_SECRET = "openfga-client-secret";
@@ -47,14 +46,13 @@ public class OpenFgaClientHandler {
     }
 
     public void publish(String eventId, EventParser event) throws FgaInvalidParameterException, ExecutionException, InterruptedException {
-        RealmModel realm=session.realms().getRealm(event.getSelectedRealmId());
-        if(!this.fgaClients.containsKey(realm.getName()) && !this.discoverClientConfiguration(realm.getName())){
+        if (!this.fgaClients.containsKey(event.getSelectedRealmId()) && !this.discoverClientConfiguration(event.getSelectedRealmId())) {
             LOG.errorf("Unable to initialized OpenFga client. Discarding  event %s, %s", eventId, event.toString());
         } else {
             ClientWriteRequest request = fgaHelper.toClientWriteRequest(event);
             if (fgaHelper.isAvailableClientRequest(request)) {
                 LOG.debugf("Publishing event id %", eventId);
-                var response = fgaClients.get(realm.getName()).write(request, this.clientWriteOptions).get();
+                var response = fgaClients.get(event.getSelectedRealmId()).write(request, this.clientWriteOptions).get();
                 LOG.debugf("Successfully sent tuple key to OpenFga, response: %s", response);
             }
         }
@@ -66,12 +64,12 @@ public class OpenFgaClientHandler {
                 .connectTimeout(Duration.ofSeconds(5))
                 .readTimeout(Duration.ofSeconds(5));
 
-        if((getCredentialMethod() == CredentialsMethod.API_TOKEN)) {
+        if ((getCredentialMethod() == CredentialsMethod.API_TOKEN)) {
             LOG.info("API Token provided in config, will use it for authentication with OpenFGA");
             ApiToken token = new ApiToken(getOpenFgaApiToken());
             Credentials credentials = new Credentials(token);
             configuration.credentials(credentials);
-        }else if (getCredentialMethod() == CredentialsMethod.CLIENT_CREDENTIALS) {
+        } else if (getCredentialMethod() == CredentialsMethod.CLIENT_CREDENTIALS) {
             LOG.info("Client Credentials provided in config, will use it for authentication with OpenFGA");
             ClientCredentials clientCredentials = getOpenFgaApiClientCredentials();
             Credentials credentials = new Credentials(clientCredentials);
@@ -85,10 +83,10 @@ public class OpenFgaClientHandler {
 
     private boolean discoverClientConfiguration(String realName) throws FgaInvalidParameterException, ExecutionException, InterruptedException {
         LOG.info("Discover store and authorization model");
-        OpenFgaClient fgaClient =getOpenFGAClient();
+        OpenFgaClient fgaClient = getOpenFGAClient();
         ListStoresResponse stores = fgaClient.listStores().get();
         if (!stores.getStores().isEmpty()) {
-            Store store =stores.getStores().stream().filter(s-> s.getName().equalsIgnoreCase(realName)).findFirst()
+            Store store = stores.getStores().stream().filter(s -> s.getName().equalsIgnoreCase(realName)).findFirst()
                     .orElseThrow(() -> new FgaInvalidParameterException("No store found for realm: " + realName));
             LOG.infof("Found store id: %s", store.getId());
             fgaClient.setStoreId(store.getId());
@@ -106,7 +104,12 @@ public class OpenFgaClientHandler {
     }
 
     public String getOpenFgaApiUrl() {
-        return config.get(OPENFGA_API_URL) != null ? config.get(OPENFGA_API_URL) : "http://openfga:8080";
+        var api_url = config.get(OPENFGA_API_URL);
+        LOG.infof("OpenFGA API URL: %s", api_url);
+        if (StringUtil.isBlank(api_url)) {
+            LOG.warnf("OpenFGA API URL is not provided in the configuration");
+        }
+        return api_url;
     }
 
     public String getOpenFgaApiToken() throws FgaInvalidParameterException {
@@ -130,7 +133,9 @@ public class OpenFgaClientHandler {
             LOG.error("OpenFGA client credentials are not provided in the configuration");
             throw new FgaInvalidParameterException("OpenFGA client credentials are not provided in the configuration");
         }
-
+        LOG.infof("OpenFGA Client ID: %s", clientId);
+        LOG.infof("OpenFGA Token Issuer: %s", issuer);
+        LOG.infof("OpenFGA Client audience: %s", audience);
         return new ClientCredentials()
                 .clientId(clientId)
                 .clientSecret(clientSecret)

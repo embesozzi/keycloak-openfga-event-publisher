@@ -99,7 +99,23 @@ The following properties can be set via environment variables following the Keyc
 
 * `KC_SPI_EVENTS_LISTENER_OPENFGA_EVENTS_PUBLISHER_API_URL`: The `openfgaApiUrl` is the URI of the OpenFGA Server. If this variable is empty, the extension will use the default value `http://openfga:8080` for demo purposes only.
 
-* Optional `KC_SPI_EVENTS_LISTENER_OPENFGA_EVENTS_PUBLISHER__STORE_ID` and `KC_SPI_EVENTS_LISTENER_OPENFGA_EVENTS_PUBLISHER_AUTHORIZATION_MODEL_ID` : The `openfgaStoreId` and the `openfgaAuthorizationModelId`  are the store and authorization model identifiers in the OpenFGA server. If not provided, the extension will attempt to discovery them.
+## Secure the OpenFGA connection
+There are two ways to secure the connection to OpenFGA, depending on the authentication method you want to use: oidc or pre-shared secret.
+Possible values for the `CREDENTIALS_METHOD are:
+ - `API_TOKEN`: Use a pre-shared secret to authenticate with the OpenFGA server.
+ - `CLIENT_CREDENTIALS`: Use OIDC Client Credentials to authenticate with the OpenFGA server.
+ - `NONE`: No authentication is used to connect to the OpenFGA server.
+
+### OAUTH2 Client Integration
+* `KC_SPI_EVENTS_LISTENER_OPENFGA_EVENTS_PUBLISHER_OPENFGA_CLIENT_ID`
+* `KC_SPI_EVENTS_LISTENER_OPENFGA_EVENTS_PUBLISHER_OPENFGA_CLIENT_SECRET`
+* `KC_SPI_EVENTS_LISTENER_OPENFGA_EVENTS_PUBLISHER_OPENFGA_API_TOKEN_ISSUER`
+* `KC_SPI_EVENTS_LISTENER_OPENFGA_EVENTS_PUBLISHER_OPENFGA_AUDIENCE`
+* `KC_SPI_EVENTS_LISTENER_OPENFGA_EVENTS_PUBLISHER_OPENFGA_CREDENTIALS_METHOD`
+
+### PRE SHARED Secret Integration
+* `KC_SPI_EVENTS_LISTENER_OPENFGA_EVENTS_PUBLISHER_OPENFGA_CREDENTIALS_METHOD`
+* `KC_SPI_EVENTS_LISTENER_OPENFGA_EVENTS_PUBLISHER_API_TOKEN`: The `openfgaApiToken` to authenticate with the OpenFGA server.
 
 You may want to check [docker-compose.yml](docker-compose.yml) as an example.
 
@@ -112,6 +128,10 @@ Enable the Keycloak OpenFGA Event Listener extension in Keycloak:
 * Choose realm
 * Realm settings
 * Select `Events` tab and add `openfga-events-publisher` to Event Listeners.
+
+### Multiple Realms Support
+The extension supports multiple realms. You can enable the OpenFGA Event Publisher for each realm you want to use. The extension will publish events for all enabled realms. 
+The name of the store and realm name must same to ensure that the OpenFGA tuples are correctly created and published.
 
 
 <img src="./images/kc-admin-events.png" width="80%" height="80%">

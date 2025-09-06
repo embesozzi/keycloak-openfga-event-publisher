@@ -12,12 +12,13 @@ import org.jboss.logging.Logger;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 public class OpenFgaHelper {
 
     private static final Logger LOG = Logger.getLogger(OpenFgaHelper.class);
     private AuthorizationModel model;
-    private Map<String, String> modelTypeObjectAndRelation;
+    private final Map<String, String> modelTypeObjectAndRelation;
 
     public OpenFgaHelper() {
         this.modelTypeObjectAndRelation = new HashMap<>();
@@ -29,9 +30,8 @@ public class OpenFgaHelper {
     }
 
     private Boolean isTypeDefinitionInModel(String eventObjectType) {
-        return !this.model.getTypeDefinitions().stream()
-                .filter(r -> r.getType().equalsIgnoreCase(eventObjectType))
-                .findFirst().isEmpty();
+        return this.model.getTypeDefinitions().stream()
+                .anyMatch(r -> r.getType().equalsIgnoreCase(eventObjectType));
     }
 
     private Boolean isRelationAvailableInModel(String typeDefinition, String objectType) {
@@ -62,7 +62,7 @@ public class OpenFgaHelper {
                     .relation(relation)
                     ._object(eventObjectType +":"+ eventObjectId);
 
-            LOG.debugf("Tuple %s %s %s",  tuple.getUser(), tuple.getRelation(), tuple.getObject());
+            LOG.infof("Tuple %s %s %s",  tuple.getUser(), tuple.getRelation(), tuple.getObject());
 
             if(event.isWriteOperation()) {
                 client.writes(List.of(tuple));
@@ -80,11 +80,11 @@ public class OpenFgaHelper {
     private void loadModelAsTypeObjectRelationshipMap(){
         LOG.debugf("Loading internal model");
         for (TypeDefinition typeDef : this.model.getTypeDefinitions()) {
-            for (Map.Entry<String, Userset> us : typeDef.getRelations().entrySet()) {
+            for (Map.Entry<String, Userset> us : Objects.requireNonNull(typeDef.getRelations()).entrySet()) {
                 if (typeDef.getMetadata() != null
-                        && !typeDef.getMetadata().getRelations().isEmpty()
+                        && !Objects.requireNonNull(typeDef.getMetadata().getRelations()).isEmpty()
                         && typeDef.getMetadata().getRelations().containsKey(us.getKey())) {
-                    for(RelationReference metadata: typeDef.getMetadata().getRelations().get(us.getKey()).getDirectlyRelatedUserTypes()) {
+                    for(RelationReference metadata: Objects.requireNonNull(typeDef.getMetadata().getRelations().get(us.getKey()).getDirectlyRelatedUserTypes())) {
                         this.modelTypeObjectAndRelation.put(typeDef.getType() + metadata.getType(), us.getKey());
                     }
                 }

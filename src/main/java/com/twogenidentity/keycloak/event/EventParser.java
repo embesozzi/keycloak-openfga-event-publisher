@@ -4,7 +4,6 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.jboss.logging.Logger;
 import org.keycloak.events.admin.AdminEvent;
 import org.keycloak.models.KeycloakSession;
 
@@ -13,8 +12,8 @@ import static org.keycloak.events.admin.OperationType.DELETE;
 
 public class EventParser {
 
-    private AdminEvent event;
-    private KeycloakSession session;
+    private final AdminEvent event;
+    private final KeycloakSession session;
 
     public static final String EVT_RESOURCE_USERS = "users";
     public static final String EVT_RESOURCE_GROUPS = "groups";
@@ -22,12 +21,6 @@ public class EventParser {
     public static final String OBJECT_TYPE_USER = "user";
     public static final String OBJECT_TYPE_ROLE = "role";
     public static final String OBJECT_TYPE_GROUP = "group";
-
-    private static final Logger LOG = Logger.getLogger(EventParser.class);
-
-    public EventParser(AdminEvent event){
-        this.event = event;
-    }
 
     public EventParser(AdminEvent event, KeycloakSession session){
         this.event = event;
@@ -46,7 +39,7 @@ public class EventParser {
             case GROUP_MEMBERSHIP:
                 return OBJECT_TYPE_GROUP;
             default:
-                throw new IllegalArgumentException("Event is not handled, id:" + event.getId() + " resource: " + event.getResourceType().name());
+                    throw new IllegalArgumentException("Event is not handled, id:" + event.getId() + " resource: " + event.getResourceType().name());
         }
     }
 
@@ -64,17 +57,14 @@ public class EventParser {
     }
 
     public boolean isWriteOperation() {
-        return this.event.getOperationType().equals(CREATE) ? true : false;
+        return this.event.getOperationType().equals(CREATE);
     }
 
     public boolean isDeleteOperation() {
-        return this.event.getOperationType().equals(DELETE) ? true : false;
+        return this.event.getOperationType().equals(DELETE);
     }
 
 
-    public String getEventAuthenticatedUserId() {
-        return this.event.getAuthDetails().getUserId();
-    }
 
     public String getEventUserId() {
         return this.event.getResourcePath().split("/")[1];
@@ -82,22 +72,6 @@ public class EventParser {
 
     public String getEventResourceName() {
         return this.event.getResourcePath().split("/")[0];
-    }
-
-    public Boolean isUserEvent() {
-        return getEventResourceName().equalsIgnoreCase(EVT_RESOURCE_USERS);
-    }
-
-    public Boolean isRoleEvent() {
-        return getEventResourceName().equalsIgnoreCase(EVT_RESOURCE_ROLES_BY_ID);
-    }
-
-    public Boolean isGroupEvent() {
-        return getEventResourceName().equalsIgnoreCase(EVT_RESOURCE_GROUPS);
-    }
-
-    public String getEventObjectId() {
-        return getObjectByAttributeName("id");
     }
 
     public String getEventObjectName() {
@@ -123,6 +97,14 @@ public class EventParser {
 
     public String findRoleNameInRealm(String roleId)  {
         return session.getContext().getRealm().getRoleById(roleId).getName();
+    }
+
+    public String getRealmId() {
+        return event.getAuthDetails().getRealmId();
+    }
+
+    public String getSelectedRealmId() {
+        return this.event.getRealmId();
     }
 
     public String toString()

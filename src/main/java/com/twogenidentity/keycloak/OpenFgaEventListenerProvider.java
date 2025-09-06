@@ -1,8 +1,8 @@
 package com.twogenidentity.keycloak;
 
-import dev.openfga.sdk.errors.FgaInvalidParameterException;
 import com.twogenidentity.keycloak.event.EventParser;
 import com.twogenidentity.keycloak.service.OpenFgaClientHandler;
+import dev.openfga.sdk.errors.FgaInvalidParameterException;
 import org.jboss.logging.Logger;
 import org.keycloak.events.Event;
 import org.keycloak.events.EventListenerProvider;
@@ -13,8 +13,8 @@ import java.util.concurrent.ExecutionException;
 
 public class OpenFgaEventListenerProvider implements EventListenerProvider {
 	private static final Logger LOG = Logger.getLogger(OpenFgaEventListenerProvider.class);
-	private OpenFgaClientHandler client;
-	private KeycloakSession session;
+	private final OpenFgaClientHandler client;
+	private final KeycloakSession session;
 
 	public OpenFgaEventListenerProvider(OpenFgaClientHandler client, KeycloakSession session) {
 		this.client = client;
@@ -37,12 +37,10 @@ public class OpenFgaEventListenerProvider implements EventListenerProvider {
 		} catch (IllegalArgumentException e) {
 			LOG.warn(e.getMessage());
 		}
-		catch (ExecutionException | InterruptedException e) {
-			throw new RuntimeException(e);
-		} catch (FgaInvalidParameterException e) {
+		catch (ExecutionException | InterruptedException | FgaInvalidParameterException e) {
 			throw new RuntimeException(e);
 		}
-	}
+    }
 
 	@Override
 	public void close() {

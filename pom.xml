@@ -12,11 +12,54 @@
 		<keycloak.version>25.0.1</keycloak.version>
 		<jackson.version>2.15.2</jackson.version>
     	<jackson.databind.version>2.15.2</jackson.databind.version>
-		<junit.version>5.8.1</junit.version>
+		<junit.version>5.11.4</junit.version>
+		<mockito.version>5.21.0</mockito.version>
+		<bytebuddy.version>1.18.8</bytebuddy.version>
+		<testcontainers.version>1.21.4</testcontainers.version>
+		<docker-java.version>3.4.2</docker-java.version>
+		<testcontainers-keycloak.version>3.4.0</testcontainers-keycloak.version>
 	</properties>
 
 	<dependencyManagement>
 		<dependencies>
+			<!-- Test libraries: declared before keycloak-parent, which pins older JUnit, Testcontainers, docker-java and ByteBuddy versions -->
+			<dependency>
+				<groupId>org.junit</groupId>
+				<artifactId>junit-bom</artifactId>
+				<version>${junit.version}</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+			<dependency>
+				<groupId>org.testcontainers</groupId>
+				<artifactId>testcontainers</artifactId>
+				<version>${testcontainers.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>com.github.docker-java</groupId>
+				<artifactId>docker-java-api</artifactId>
+				<version>${docker-java.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>com.github.docker-java</groupId>
+				<artifactId>docker-java-transport-zerodep</artifactId>
+				<version>${docker-java.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>com.github.docker-java</groupId>
+				<artifactId>docker-java-transport</artifactId>
+				<version>${docker-java.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>net.bytebuddy</groupId>
+				<artifactId>byte-buddy</artifactId>
+				<version>${bytebuddy.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>net.bytebuddy</groupId>
+				<artifactId>byte-buddy-agent</artifactId>
+				<version>${bytebuddy.version}</version>
+			</dependency>
             <dependency>
                 <groupId>org.keycloak</groupId>
                 <artifactId>keycloak-parent</artifactId>
@@ -82,8 +125,45 @@
 		</dependency>
 		<dependency>
 			<groupId>org.junit.jupiter</groupId>
-			<artifactId>junit-jupiter-api</artifactId>
+			<artifactId>junit-jupiter</artifactId>
 			<version>${junit.version}</version>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.testcontainers</groupId>
+			<artifactId>junit-jupiter</artifactId>
+			<version>${testcontainers.version}</version>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<!-- Keycloak container + Keycloak admin client; 3.4.x matches Keycloak 25, 4.x is for Keycloak 26 -->
+			<groupId>com.github.dasniko</groupId>
+			<artifactId>testcontainers-keycloak</artifactId>
+			<version>${testcontainers-keycloak.version}</version>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.awaitility</groupId>
+			<artifactId>awaitility</artifactId>
+			<version>4.3.0</version>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<!-- The admin client's HTTP stack logs through commons-logging, which keycloak-parent excludes in favour of this bridge -->
+			<groupId>org.jboss.logging</groupId>
+			<artifactId>commons-logging-jboss-logging</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<!-- Needed to mock KeycloakContext; provided by Keycloak at runtime (version from keycloak-parent) -->
+			<groupId>jakarta.ws.rs</groupId>
+			<artifactId>jakarta.ws.rs-api</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.mockito</groupId>
+			<artifactId>mockito-core</artifactId>
+			<version>${mockito.version}</version>
 			<scope>test</scope>
 		</dependency>
 	</dependencies>
@@ -91,6 +171,51 @@
 	<build>
 		<finalName>${project.artifactId}</finalName>
 		<plugins>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-dependency-plugin</artifactId>
+				<version>3.8.1</version>
+				<executions>
+					<execution>
+						<!-- Exposes the jar paths as properties, for the Mockito agent below -->
+						<goals>
+							<goal>properties</goal>
+						</goals>
+					</execution>
+				</executions>
+			</plugin>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-surefire-plugin</artifactId>
+				<version>3.5.2</version>
+				<configuration>
+					<!-- Load Mockito as an agent: dynamic agent loading is going away in newer JDKs -->
+					<argLine>-javaagent:${org.mockito:mockito-core:jar}</argLine>
+					<!-- Unit tests only: integration tests run in the integration-test phase (failsafe, below) -->
+					<excludes>
+						<exclude>**/*IntegrationTest.java</exclude>
+					</excludes>
+				</configuration>
+			</plugin>
+			<plugin>
+				<!-- Integration tests (*IntegrationTest.java): run by `mvn verify`, after the provider jar is packaged -->
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-failsafe-plugin</artifactId>
+				<version>3.5.4</version>
+				<configuration>
+					<includes>
+						<include>**/*IntegrationTest.java</include>
+					</includes>
+				</configuration>
+				<executions>
+					<execution>
+						<goals>
+							<goal>integration-test</goal>
+							<goal>verify</goal>
+						</goals>
+					</execution>
+				</executions>
+			</plugin>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-shade-plugin</artifactId>

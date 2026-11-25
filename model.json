@@ -1,6 +1,11 @@
 {
   "type_definitions": [
     {
+      "type": "client",
+      "relations": {},
+      "metadata": null
+    },
+    {
       "type": "group",
       "relations": {
         "assignee": {
@@ -68,6 +73,9 @@
             "directly_related_user_types": [
               {
                 "type": "user"
+              },
+              {
+                "type": "client"
               }
             ]
           },

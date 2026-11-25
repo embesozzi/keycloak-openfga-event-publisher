@@ -12,21 +12,15 @@ import org.keycloak.models.KeycloakSessionFactory;
 public class OpenFgaEventListenerProviderFactory implements EventListenerProviderFactory {
 
 	private static final String PROVIDER_ID = "openfga-events-publisher";
-	private OpenFgaEventListenerProvider instance;
-	private Scope config;
+
+	// Shared by all providers: holds the OpenFGA client and the discovered store and model
 	private OpenFgaClientHandler client;
 
 	@Override
 	public EventListenerProvider create(KeycloakSession session) {
-		if (client == null) {
-			try {
-				client = new OpenFgaClientHandler(config);
-			} catch (FgaInvalidParameterException e) {
-				throw new RuntimeException(e);
-			}
-			instance = new OpenFgaEventListenerProvider(client, session);
-		}
-		return instance;
+		// Keycloak calls create() once per session (request): the provider must use that session only,
+		// a cached provider would keep using the first, already closed, session
+		return new OpenFgaEventListenerProvider(client, session);
 	}
 
 	@Override
@@ -36,8 +30,11 @@ public class OpenFgaEventListenerProviderFactory implements EventListenerProvide
 
 	@Override
 	public void init(Scope config) {
-		this.config = config;
-
+		try {
+			this.client = new OpenFgaClientHandler(config);
+		} catch (FgaInvalidParameterException e) {
+			throw new RuntimeException(e);
+		}
 	}
 
 	@Override

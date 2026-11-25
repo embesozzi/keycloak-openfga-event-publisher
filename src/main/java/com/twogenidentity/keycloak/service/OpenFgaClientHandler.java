@@ -20,7 +20,8 @@ public class OpenFgaClientHandler {
     protected final Config.Scope config;
     private final OpenFgaClient fgaClient;
     private final OpenFgaHelper fgaHelper;
-    private Boolean isClientInitialized = false;
+    // Shared across Keycloak request threads: discovery runs once, under the lock in discoverClientConfiguration()
+    private volatile boolean isClientInitialized = false;
 
     private final ClientWriteOptions clientWriteOptions;
 
@@ -64,7 +65,10 @@ public class OpenFgaClientHandler {
         }
     }
 
-    private boolean discoverClientConfiguration() throws FgaInvalidParameterException, ExecutionException, InterruptedException {
+    private synchronized boolean discoverClientConfiguration() throws FgaInvalidParameterException, ExecutionException, InterruptedException {
+        if (this.isClientInitialized) {
+            return true; // another thread discovered it while this one waited
+        }
         LOG.info("Discover store and authorization model");
         ListStoresResponse stores = fgaClient.listStores().get();
         if(!stores.getStores().isEmpty()) {

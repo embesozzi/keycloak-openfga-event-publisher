@@ -1,5 +1,3 @@
-version: '3.8'
-
 # volumes:
 #  postgres_data:
 #    driver: local
@@ -38,10 +36,9 @@ services:
       KC_DB_PASSWORD: password
       KC_HOSTNAME_STRICT: 'false'
       KC_HTTP_ENABLED: 'true'
-      KC_HOSTNAME_ADMIN: localhost
-      KC_HOSTNAME: localhost
-      KC_SPI_EVENTS_LISTENER_OPENFGA_API_URL: http://openfga:8080
-      KC_LOG_LEVEL: INFO, com.twogenidentity.keycloak:debug
+      KC_HOSTNAME: http://localhost:9080
+      KC_SPI_EVENTS_LISTENER_OPENFGA_EVENTS_PUBLISHER_OPENFGA_API_URL: http://openfga:8080
+      KC_LOG_LEVEL: INFO,com.twogenidentity.keycloak:debug
     ports:
       - 9080:8080
       - 8443:8443
@@ -49,8 +46,8 @@ services:
       - $PWD/target/keycloak-openfga-event-publisher.jar:/opt/keycloak/providers/keycloak-openfga-event-publisher.jar
     depends_on:
       postgres:
-        condition: service_completed_successfully
-      openfga:
+        condition: service_healthy
+      openfga-import:
         condition: service_completed_successfully
     networks:
       default:
@@ -76,7 +73,7 @@ services:
 
   migrate:
     depends_on:
-      postgres:
+      postgres-openfga:
         condition: service_healthy
     image: openfga/openfga:v1.5.5
     container_name: migrate
@@ -109,3 +106,18 @@ services:
       - "8080:8080" #http
       - "8081:8081" #grpc
       - "3000:3000" #playground
+
+  # Creates the "keycloak" store with model.dsl (openfga-store.yaml), so the extension has a store and model to publish to
+  openfga-import:
+    depends_on:
+      openfga:
+        condition: service_healthy
+    image: openfga/cli:v0.9.0
+    container_name: openfga-import
+    restart: "no"
+    command: "store import --api-url http://openfga:8080 --file /tmp/openfga/openfga-store.yaml"
+    volumes:
+      - $PWD/openfga-store.yaml:/tmp/openfga/openfga-store.yaml:ro
+      - $PWD/model.dsl:/tmp/openfga/model.dsl:ro
+    networks:
+      - default

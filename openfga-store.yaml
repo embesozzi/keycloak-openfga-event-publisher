@@ -1,0 +1,3 @@
+# OpenFGA store for the demo: imported by the openfga-import service of docker-compose.yml (fga store import)
+name: keycloak
+model_file: ./model.dsl

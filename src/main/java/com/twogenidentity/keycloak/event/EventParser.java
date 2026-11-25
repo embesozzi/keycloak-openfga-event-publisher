@@ -7,6 +7,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jboss.logging.Logger;
 import org.keycloak.events.admin.AdminEvent;
 import org.keycloak.models.KeycloakSession;
+import org.keycloak.models.ClientModel;
+import org.keycloak.models.RealmModel;
+import org.keycloak.models.UserModel;
 
 import static org.keycloak.events.admin.OperationType.CREATE;
 import static org.keycloak.events.admin.OperationType.DELETE;
@@ -15,6 +18,8 @@ public class EventParser {
 
     private AdminEvent event;
     private KeycloakSession session;
+    private boolean serviceAccountResolved = false;
+    private String serviceAccountClientLink;
 
     public static final String EVT_RESOURCE_USERS = "users";
     public static final String EVT_RESOURCE_GROUPS = "groups";
@@ -22,6 +27,7 @@ public class EventParser {
     public static final String OBJECT_TYPE_USER = "user";
     public static final String OBJECT_TYPE_ROLE = "role";
     public static final String OBJECT_TYPE_GROUP = "group";
+    public static final String OBJECT_TYPE_CLIENT = "client";
 
     private static final Logger LOG = Logger.getLogger(EventParser.class);
 
@@ -34,13 +40,17 @@ public class EventParser {
         this.session = session;
     }
 
-    public String getTranslateUserId(){
-        return getEventUserType().equals(OBJECT_TYPE_ROLE) ? findRoleNameInRealm(getEventUserId()) : getEventUserId();
+    public String getTranslateUserId() {
+        String userType = getEventUserType();
+        if (userType.equals(OBJECT_TYPE_ROLE))   return findRoleNameInRealm(getEventUserId());
+        if (userType.equals(OBJECT_TYPE_CLIENT)) return findClientIdFromServiceAccount(getEventUserId());
+        return getEventUserId();
     }
 
     public String getEventObjectType() {
         switch (event.getResourceType()) {
             case REALM_ROLE_MAPPING:
+            case CLIENT_ROLE_MAPPING:
             case REALM_ROLE:
                 return OBJECT_TYPE_ROLE;
             case GROUP_MEMBERSHIP:
@@ -53,7 +63,7 @@ public class EventParser {
     public String getEventUserType() {
         switch (getEventResourceName()) {
             case EVT_RESOURCE_USERS:
-                return OBJECT_TYPE_USER;
+                return isServiceAccountUser() ? OBJECT_TYPE_CLIENT : OBJECT_TYPE_USER;
             case EVT_RESOURCE_GROUPS:
                 return OBJECT_TYPE_GROUP;
             case EVT_RESOURCE_ROLES_BY_ID:
@@ -109,16 +119,61 @@ public class EventParser {
         String representation = event.getRepresentation().replaceAll("\\\\", ""); // Fixme: I should try to avoid the replace
         try {
             JsonNode jsonNode = mapper.readTree(representation);
-            if(jsonNode.isArray()){
-                return jsonNode.get(0).get(attributeName).asText();
+            if (jsonNode.isArray()) {
+                JsonNode element = jsonNode.get(0);
+                if (element == null) {
+                    throw new IllegalArgumentException("Cannot parse '" + attributeName + "': empty representation array for event id:" + event.getId());
+                }
+                JsonNode attr = element.get(attributeName);
+                if (attr == null) {
+                    throw new IllegalArgumentException("Attribute '" + attributeName + "' missing in: " + element);
+                }
+                return attr.asText();
             }
-            return jsonNode.get(attributeName).asText();
+            JsonNode attr = jsonNode.get(attributeName);
+            if (attr == null) {
+                throw new IllegalArgumentException("Attribute '" + attributeName + "' missing in: " + jsonNode);
+            }
+            return attr.asText();
         }
         catch (JsonMappingException e) {
             throw new RuntimeException(e); // Fixme: Improve exception handling
         } catch (JsonProcessingException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    public boolean isServiceAccountUser() {
+        return getServiceAccountClientLink() != null;
+    }
+
+    public String findClientIdFromServiceAccount(String userId) {
+        String internalClientId = getServiceAccountClientLink();
+        ClientModel client = internalClientId != null ? getEventRealm().getClientById(internalClientId) : null;
+        if (client == null) {
+            throw new IllegalArgumentException("No client found for service account user id:" + userId + " event id:" + event.getId());
+        }
+        return client.getClientId();
+    }
+
+    // Lazily resolves (once per event) the internal client id linked to the event's user, or null if not a service account
+    private String getServiceAccountClientLink() {
+        if (!serviceAccountResolved) {
+            serviceAccountResolved = true;
+            RealmModel realm = getEventRealm();
+            if (realm != null) {
+                UserModel user = session.users().getUserById(realm, getEventUserId());
+                serviceAccountClientLink = user != null ? user.getServiceAccountClientLink() : null;
+            }
+        }
+        return serviceAccountClientLink;
+    }
+
+    // The realm the admin event targets (not necessarily the admin's realm, e.g. master)
+    private RealmModel getEventRealm() {
+        if (session == null) return null;
+        RealmModel realm = session.realms().getRealm(event.getRealmId());
+        return realm != null ? realm : session.getContext().getRealm();
     }
 
     public String findRoleNameInRealm(String roleId)  {

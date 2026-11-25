@@ -1,0 +1,29 @@
+{
+  "realm": "it",
+  "enabled": true,
+  "sslRequired": "none",
+  "eventsListeners": ["openfga-events-publisher", "jboss-logging"],
+  "adminEventsEnabled": true,
+  "adminEventsDetailsEnabled": true,
+  "clients": [
+    {
+      "clientId": "it-admin",
+      "secret": "it-admin-secret",
+      "enabled": true,
+      "publicClient": false,
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false
+    }
+  ],
+  "users": [
+    {
+      "username": "service-account-it-admin",
+      "enabled": true,
+      "serviceAccountClientId": "it-admin",
+      "clientRoles": {
+        "realm-management": ["realm-admin"]
+      }
+    }
+  ]
+}

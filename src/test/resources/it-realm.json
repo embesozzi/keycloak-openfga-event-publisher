@@ -15,6 +15,28 @@
       "standardFlowEnabled": false,
       "directAccessGrantsEnabled": false,
       "defaultClientScopes": ["kc-admin-api", "roles", "basic"]
+    },
+    {
+      "clientId": "openfga-publisher",
+      "secret": "openfga-publisher-secret",
+      "enabled": true,
+      "publicClient": false,
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "defaultClientScopes": ["basic"],
+      "protocolMappers": [
+        {
+          "name": "openfga-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "openfga",
+            "access.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
     }
   ],
   "users": [

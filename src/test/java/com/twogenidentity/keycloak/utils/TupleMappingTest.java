@@ -321,4 +321,50 @@ class TupleMappingTest {
 
         assertFalse(oldHelper.isAvailableClientRequest(request));
     }
+
+    @Test
+    @DisplayName("Organization member added: user:<id> member organization:<alias>, member found by username")
+    void organizationMemberAdded() {
+        var request = map(organizationMembership(CREATE, ORG_ID, ORG_ALIAS, USERNAME, null));
+
+        assertTuple(onlyWrite(request), "user:" + USER_ID, "member", "organization:" + ORG_ALIAS);
+    }
+
+    @Test
+    @DisplayName("Organization member removed: the member id comes from the path, the tuple is deleted")
+    void organizationMemberRemoved() {
+        var request = map(organizationMembership(DELETE, ORG_ID, ORG_ALIAS, USERNAME, USER_ID));
+
+        assertTuple(onlyDelete(request), "user:" + USER_ID, "member", "organization:" + ORG_ALIAS);
+    }
+
+    @Test
+    @DisplayName("Organization alias with a space is published percent-encoded")
+    void organizationAliasEncoded() {
+        var request = map(organizationMembership(CREATE, ORG_WITH_SPACE_ID, ORG_WITH_SPACE_ALIAS, USERNAME, null));
+
+        assertTuple(onlyWrite(request), "user:" + USER_ID, "member", "organization:Acme%20Corp");
+    }
+
+    @Test
+    @DisplayName("Identifier id: user:<id> member organization:<orgId>")
+    void idOrganization() {
+        var request = helper.toClientWriteRequest(parser(
+                organizationMembership(CREATE, ORG_ID, ORG_ALIAS, USERNAME, null), OpenFgaIdentifier.ID));
+
+        assertTuple(onlyWrite(request), "user:" + USER_ID, "member", "organization:" + ORG_ID);
+    }
+
+    @Test
+    @DisplayName("A model without the organization type produces no tuple change (3.1 model)")
+    void organizationNotInModel() throws Exception {
+        var oldModel = model();
+        oldModel.getTypeDefinitions().removeIf(t -> t.getType().equals("organization"));
+        var oldHelper = new OpenFgaHelper();
+        oldHelper.loadModel(oldModel);
+
+        var request = oldHelper.toClientWriteRequest(parser(organizationMembership(CREATE, ORG_ID, ORG_ALIAS, USERNAME, null)));
+
+        assertFalse(oldHelper.isAvailableClientRequest(request));
+    }
 }

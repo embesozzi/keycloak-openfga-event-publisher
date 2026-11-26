@@ -4,7 +4,7 @@
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>com.twogentity.keycloak</groupId>
 	<artifactId>keycloak-openfga-event-publisher</artifactId>
-	<version>3.1.0</version>
+	<version>3.2.0</version>
 
 	<properties>
 		<maven.compiler.source>17</maven.compiler.source>

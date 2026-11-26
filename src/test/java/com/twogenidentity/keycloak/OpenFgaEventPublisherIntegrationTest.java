@@ -16,6 +16,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.keycloak.OAuth2Constants;
 import org.keycloak.admin.client.CreatedResponseUtil;
+import org.keycloak.admin.client.Keycloak;
 import org.keycloak.admin.client.KeycloakBuilder;
 import org.keycloak.admin.client.resource.RealmResource;
 import org.keycloak.representations.idm.ClientRepresentation;
@@ -29,12 +30,17 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.io.File;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 
 import static org.awaitility.Awaitility.await;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * Real Keycloak with the packaged provider jar, real OpenFGA with the repository's model.json.
@@ -75,6 +81,7 @@ class OpenFgaEventPublisherIntegrationTest {
                 if (line.contains("twogenidentity")) System.out.print("[keycloak] " + line);
             });
 
+    private static Keycloak keycloak;
     private static RealmResource realm;
     private static OpenFgaClient openfga;
 
@@ -93,14 +100,14 @@ class OpenFgaEventPublisherIntegrationTest {
         openfga.setAuthorizationModelId(openfga.writeAuthorizationModel(model).get().getAuthorizationModelId());
 
         // Admin client logged in to the test realm itself (client credentials), so the master realm is not involved
-        realm = KeycloakBuilder.builder()
+        keycloak = KeycloakBuilder.builder()
                 .serverUrl(KEYCLOAK.getAuthServerUrl())
                 .realm(REALM)
                 .grantType(OAuth2Constants.CLIENT_CREDENTIALS)
                 .clientId("it-admin")
                 .clientSecret("it-admin-secret")
-                .build()
-                .realm(REALM);
+                .build();
+        realm = keycloak.realm(REALM);
     }
 
     @Test
@@ -239,7 +246,39 @@ class OpenFgaEventPublisherIntegrationTest {
                 hasTuple("client:spiffe%3A%2F%2Fexample.org%2Fns%2Fagents%2Fsa%2Fplanner-agent", "assignee", "role:support-agent"));
     }
 
+    @Test
+    @DisplayName("Organization membership writes user:<id> member organization:<alias>; removal deletes it")
+    void organizationMembership() throws Exception {
+        String userId = createUser("olivia");
+        String orgId = createOrganization("org-a", "orga.example.org");
+
+        try (Response response = realm.organizations().get(orgId).members().addMember(userId)) {
+            assertEquals(201, response.getStatus());
+        }
+        await("tuple written").until(() -> hasTuple("user:" + userId, "member", "organization:org-a"));
+
+        try (Response response = realm.organizations().get(orgId).members().member(userId).delete()) {
+            assertEquals(204, response.getStatus());
+        }
+        await("tuple deleted").until(() -> !hasTuple("user:" + userId, "member", "organization:org-a"));
+    }
+
     // --- Keycloak ---
+
+    // Plain JSON: Keycloak 26.0 requires a domain, and rejects the domain fields the 26.8 admin client sends
+    private static String createOrganization(String alias, String domain) throws Exception {
+        String json = "{\"name\":\"" + alias + "\",\"alias\":\"" + alias + "\",\"enabled\":true,"
+                + "\"domains\":[{\"name\":\"" + domain + "\"}]}";
+        HttpRequest request = HttpRequest.newBuilder(URI.create(KEYCLOAK.getAuthServerUrl() + "/admin/realms/" + REALM + "/organizations"))
+                .header("Authorization", "Bearer " + keycloak.tokenManager().getAccessTokenString())
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(json))
+                .build();
+        HttpResponse<String> response = HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
+        assertEquals(201, response.statusCode(), response.body());
+        String location = response.headers().firstValue("Location").orElseThrow();
+        return location.substring(location.lastIndexOf('/') + 1);
+    }
 
     private static String createUser(String username) {
         UserRepresentation rep = new UserRepresentation();

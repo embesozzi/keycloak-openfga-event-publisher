@@ -21,6 +21,7 @@ import org.keycloak.models.UserProvider;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -52,6 +53,13 @@ public final class OpenFgaFixture {
 
     // A regular user
     public static final String USER_ID = "user-id-paula";
+    public static final String USERNAME = "paula";
+
+    // Organizations (alias is the OpenFGA id); one alias with a space
+    public static final String ORG_ID = "org-id-org-a";
+    public static final String ORG_ALIAS = "org-a";
+    public static final String ORG_WITH_SPACE_ID = "org-id-acme-corp";
+    public static final String ORG_WITH_SPACE_ALIAS = "Acme Corp";
 
     // A service account user linked to a confidential client
     public static final String SA_USER_ID = "user-id-service-account-store-api";
@@ -117,6 +125,24 @@ public final class OpenFgaFixture {
         return sb.append(']').toString();
     }
 
+    /** An organization representation, as sent in organization membership events. */
+    public static String organization(String id, String alias) {
+        return "{\"id\":\"" + id + "\",\"name\":\"" + alias + " Inc\",\"alias\":\"" + alias
+                + "\",\"enabled\":true,\"domains\":[]}";
+    }
+
+    /**
+     * An organization membership event as Keycloak emits it: the organization as representation, and the member's
+     * username and email as details. Adding a member: organizations/{orgId}/members (the user id is only in the
+     * request body). Removing one: organizations/{orgId}/members/{memberId}.
+     */
+    public static AdminEvent organizationMembership(OperationType operation, String orgId, String alias, String username, String memberId) {
+        String path = "organizations/" + orgId + "/members" + (memberId != null ? "/" + memberId : "");
+        AdminEvent event = event(ResourceType.ORGANIZATION_MEMBERSHIP, operation, path, organization(orgId, alias));
+        event.setDetails(Map.of(UserModel.USERNAME, username, UserModel.EMAIL, username + "@example.org"));
+        return event;
+    }
+
     public static String group(String id, String name) {
         return "{\"id\":\"" + id + "\",\"name\":\"" + name + "\",\"path\":\"/" + name + "\"}";
     }
@@ -161,6 +187,7 @@ public final class OpenFgaFixture {
         UserProvider users = mock(UserProvider.class);
         lenient().when(users.getUserById(any(RealmModel.class), anyString())).thenReturn(null);
         lenient().when(users.getUserById(realm, USER_ID)).thenReturn(paula);
+        lenient().when(users.getUserByUsername(realm, USERNAME)).thenReturn(paula);
         lenient().when(users.getUserById(realm, SA_USER_ID)).thenReturn(serviceAccount);
         lenient().when(users.getUserById(realm, SPIFFE_SA_USER_ID)).thenReturn(spiffeServiceAccount);
 

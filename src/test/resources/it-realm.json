@@ -4,6 +4,7 @@
   "sslRequired": "none",
   "eventsListeners": ["openfga-events-publisher", "jboss-logging"],
   "adminEventsEnabled": true,
+  "organizationsEnabled": true,
   "adminEventsDetailsEnabled": true,
   "clients": [
     {

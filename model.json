@@ -28,6 +28,25 @@
       }
     },
     {
+      "type": "organization",
+      "relations": {
+        "member": {
+          "this": {}
+        }
+      },
+      "metadata": {
+        "relations": {
+          "member": {
+            "directly_related_user_types": [
+              {
+                "type": "user"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
       "type": "role",
       "relations": {
         "assignee": {

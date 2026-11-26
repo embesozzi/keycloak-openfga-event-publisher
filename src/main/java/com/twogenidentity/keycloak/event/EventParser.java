@@ -27,14 +27,17 @@ public class EventParser {
     private OpenFgaIdentifier identifier = OpenFgaIdentifier.NAME;
     private boolean serviceAccountResolved = false;
     private String serviceAccountClientLink;
+    private String organizationMemberId;
 
     public static final String EVT_RESOURCE_USERS = "users";
     public static final String EVT_RESOURCE_GROUPS = "groups";
     public static final String EVT_RESOURCE_ROLES_BY_ID = "roles-by-id";
+    public static final String EVT_RESOURCE_ORGANIZATIONS = "organizations";
     public static final String OBJECT_TYPE_USER = "user";
     public static final String OBJECT_TYPE_ROLE = "role";
     public static final String OBJECT_TYPE_GROUP = "group";
     public static final String OBJECT_TYPE_CLIENT = "client";
+    public static final String OBJECT_TYPE_ORGANIZATION = "organization";
 
     private static final Logger LOG = Logger.getLogger(EventParser.class);
 
@@ -77,6 +80,8 @@ public class EventParser {
                 return OBJECT_TYPE_ROLE;
             case GROUP_MEMBERSHIP:
                 return OBJECT_TYPE_GROUP;
+            case ORGANIZATION_MEMBERSHIP:
+                return OBJECT_TYPE_ORGANIZATION;
             default:
                 throw new IllegalArgumentException("Event is not handled, id:" + event.getId() + " resource: " + event.getResourceType().name());
         }
@@ -85,6 +90,7 @@ public class EventParser {
     public String getEventUserType() {
         switch (getEventResourceName()) {
             case EVT_RESOURCE_USERS:
+            case EVT_RESOURCE_ORGANIZATIONS: // organization members are users
                 return isServiceAccountUser() ? OBJECT_TYPE_CLIENT : OBJECT_TYPE_USER;
             case EVT_RESOURCE_GROUPS:
                 return OBJECT_TYPE_GROUP;
@@ -108,8 +114,38 @@ public class EventParser {
         return this.event.getAuthDetails().getUserId();
     }
 
+    /**
+     * The id of the event's user side, from the resource path: users/{id}/..., groups/{id}/..., roles-by-id/{id}/...
+     * For organization membership it is the member's user id, see {@link #getOrganizationMemberId()}.
+     */
     public String getEventUserId() {
+        if (getEventResourceName().equals(EVT_RESOURCE_ORGANIZATIONS)) {
+            return getOrganizationMemberId();
+        }
         return this.event.getResourcePath().split("/")[1];
+    }
+
+    /**
+     * The member of an organization membership event. Removal: organizations/{orgId}/members/{memberId}.
+     * Addition: organizations/{orgId}/members, with the user id only in the request body, so the member is
+     * found by the username Keycloak adds to the event details.
+     */
+    private String getOrganizationMemberId() {
+        if (organizationMemberId == null) {
+            String[] path = event.getResourcePath().split("/");
+            if (path.length >= 4 && "members".equals(path[2])) {
+                organizationMemberId = path[3];
+            } else {
+                String username = event.getDetails() != null ? event.getDetails().get(UserModel.USERNAME) : null;
+                RealmModel realm = getEventRealm();
+                UserModel user = username != null && realm != null ? session.users().getUserByUsername(realm, username) : null;
+                if (user == null) {
+                    throw new IllegalArgumentException("No organization member found for username:" + username + " event id:" + event.getId());
+                }
+                organizationMemberId = user.getId();
+            }
+        }
+        return organizationMemberId;
     }
 
     public String getEventResourceName() {
@@ -153,6 +189,10 @@ public class EventParser {
     private String toObjectName(JsonNode element) {
         if (identifier == OpenFgaIdentifier.ID) {
             return OpenFgaIds.encode(getAttribute(element, "id")); // role and group ids are unique: no clientId prefix
+        }
+        if (OBJECT_TYPE_ORGANIZATION.equals(getEventObjectType())) {
+            // the alias: unique in the realm, and the key of the organization claim in tokens
+            return OpenFgaIds.encode(getAttribute(element, "alias"));
         }
         String name = OpenFgaIds.encode(getAttribute(element, "name"));
         if (!OBJECT_TYPE_ROLE.equals(getEventObjectType())) {

@@ -1,6 +1,6 @@
 # Keycloak OpenFGA Event Publisher
 
-A Keycloak extension that keeps [OpenFGA](https://openfga.dev/) in sync with [Keycloak](https://www.keycloak.org/): when an administrator assigns a role, adds a role to a composite or adds a user to a group, the extension publishes the matching relationship tuple to OpenFGA. Apps and APIs then use OpenFGA to check permissions.
+A Keycloak extension that keeps [OpenFGA](https://openfga.dev/) in sync with [Keycloak](https://www.keycloak.org/): when an administrator assigns a role, adds a role to a composite, or adds a user to a group or an organization, the extension publishes the matching relationship tuple to OpenFGA. Apps and APIs then use OpenFGA to check permissions.
 
 Tuples follow this authorization model ([model.dsl](model.dsl), [JSON](model.json)):
 
@@ -12,6 +12,9 @@ type client
 type group
   relations
     define assignee: [user, client]
+type organization
+  relations
+    define member: [user]
 type role
   relations
     define assignee: [user, client] or assignee from parent or assignee from parent_group
@@ -27,6 +30,7 @@ graph LR
   client((client))
   group((group))
   role((role))
+  organization((organization))
 
   user -- assignee --> role
   client -- assignee --> role
@@ -34,6 +38,7 @@ graph LR
   client -- assignee --> group
   group -- parent_group --> role
   role -- parent --> role
+  user -- member --> organization
 ```
 
 OpenFGA resolves the inheritance: the assignees of a role include the assignees of its parent roles and the members of the groups that have the role.
@@ -100,8 +105,9 @@ The extension listens to Keycloak admin events and publishes one tuple per chang
 | A user joins a group | `user:<userId>` `assignee` `group:<group>` |
 | A client's service account is assigned a role | `client:<clientId>` `assignee` `role:<role>` |
 | A client's service account joins a group | `client:<clientId>` `assignee` `group:<group>` |
+| A user joins an organization | `user:<userId>` `member` `organization:<alias>` |
 
-Roles, groups and clients are identified by name by default; see [Identifiers in OpenFGA](#identifiers-in-openfga).
+Roles, groups and clients are identified by name, and organizations by alias, by default; see [Identifiers in OpenFGA](#identifiers-in-openfga).
 
 Only admin events are published: changes made in the Admin Console, the Admin REST API or `kcadm.sh`.
 
@@ -116,7 +122,8 @@ Download the jar from the [releases](https://github.com/embesozzi/keycloak-openf
 
 | Extension | Keycloak | OpenFGA (tested) |
 |-----------|----------|------------------|
-| 3.0.x | 26.x (tested 26.0.8 and 26.8.2) | v1.23.0 |
+| 3.2.x | 26.x (tested 26.0.8 and 26.8.2) | v1.23.0 |
+| 3.0.x, 3.1.x | 26.x (tested 26.0.8 and 26.8.2) | v1.23.0 |
 | 2.0.x | 25.x | v1.5.5 |
 | 1.1.x, 1.2.x | 25.x | v1.5.5 |
 | 1.0.x | 19.x | v1.3.1 |
@@ -184,8 +191,9 @@ Apps and PEPs (gateways, API middleware) must call OpenFGA with the same ids the
 | Client role | `role:<clientId>/<roleName>` | `role:<roleId>` |
 | Group | `group:<groupName>` | `group:<groupId>` |
 | Service account | `client:<clientId>` (the token's `azp`) | `client:<client internal id>` |
+| Organization | `organization:<alias>` (a key of the token's `organization` claim) | `organization:<orgId>` |
 
-* **`name`**: ids can be built from tokens and configuration. Names are percent-encoded, see below.
+* **`name`**: ids can be built from tokens and configuration. Names and organization aliases are percent-encoded, see below.
 * **`id`**: ids survive renames, but a PEP needs the Keycloak ids of the roles, groups and clients it checks.
 
 For a service-account token (client credentials), check `client:<azp>`, not `user:<sub>`: `sub` is the service account's internal user id, which is not published.
@@ -249,7 +257,11 @@ Java: [`OpenFgaIds.encode`](src/main/java/com/twogenidentity/keycloak/utils/Open
 
 * **OpenFGA unavailable:** if a write fails, Keycloak logs it (`KC-SERVICES0085`) and the change is not published. There is no retry.
 * **Deletes and renames:** deleting or renaming a user, role, group or client does not update its tuples in OpenFGA.
-* **Admin events only:** default roles at registration, identity provider and LDAP mappers, and realm imports are not published.
+* **Admin events only:** default roles at registration, identity provider and LDAP mappers, and realm imports are not published. For organizations, only members added or removed by an administrator (Admin Console, Admin REST API, `kcadm.sh`) are published, not members who join by accepting an invitation or by signing in through the organization's identity provider.
+
+## Upgrading from 3.1
+
+* **Organizations:** to publish organization membership, enable Organizations in the realm and add the `organization` type to your store's model ([model.dsl](model.dsl)). With the 3.1 model, membership events are skipped with a warning, as before.
 
 ## Upgrading from 2.0
 

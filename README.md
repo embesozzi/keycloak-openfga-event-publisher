@@ -132,6 +132,37 @@ Set with environment variables:
 | `KC_SPI_EVENTS_LISTENER_OPENFGA_EVENTS_PUBLISHER_OPENFGA_STORE_ID` | Store id, instead of the name | |
 | `KC_SPI_EVENTS_LISTENER_OPENFGA_EVENTS_PUBLISHER_OPENFGA_AUTHORIZATION_MODEL_ID` | Authorization model id | latest model of the store |
 | `KC_SPI_EVENTS_LISTENER_OPENFGA_EVENTS_PUBLISHER_OPENFGA_IDENTIFIER` | How roles, groups and clients are identified: `name` or `id` | `name` |
+| `KC_SPI_EVENTS_LISTENER_OPENFGA_EVENTS_PUBLISHER_OPENFGA_CREDENTIALS_METHOD` | How to authenticate to OpenFGA: `none`, `api_token` or `client_credentials` (see below) | `none` |
+
+### Authentication
+
+Use the method that matches your OpenFGA server's [authentication](https://openfga.dev/docs/getting-started/setup-openfga/configure-openfga#configuring-authentication). Each variable starts with `KC_SPI_EVENTS_LISTENER_OPENFGA_EVENTS_PUBLISHER_`:
+
+| Method | Variables |
+|--------|-----------|
+| `api_token` (pre-shared key) | `OPENFGA_API_TOKEN` |
+| `client_credentials` (OIDC) | `OPENFGA_CLIENT_ID`, `OPENFGA_CLIENT_SECRET`, `OPENFGA_API_TOKEN_ISSUER`, and optionally `OPENFGA_API_AUDIENCE` and `OPENFGA_SCOPES` |
+
+`OPENFGA_API_TOKEN_ISSUER` is the token endpoint URL, for example `https://keycloak.example.com/realms/my-realm/protocol/openid-connect/token`. With only a host name, `/oauth/token` is added.
+
+<details>
+<summary>Example: OpenFGA protected by Keycloak (OIDC)</summary>
+
+1. In Keycloak, create a confidential client with service accounts enabled (for example `openfga-publisher`), and add an Audience mapper with the audience OpenFGA expects (for example `openfga`).
+2. Start OpenFGA with `OPENFGA_AUTHN_METHOD=oidc`, `OPENFGA_AUTHN_OIDC_ISSUER=https://keycloak.example.com/realms/my-realm` and `OPENFGA_AUTHN_OIDC_AUDIENCE=openfga`.
+3. Configure the extension:
+
+```shell
+KC_SPI_EVENTS_LISTENER_OPENFGA_EVENTS_PUBLISHER_OPENFGA_CREDENTIALS_METHOD=client_credentials
+KC_SPI_EVENTS_LISTENER_OPENFGA_EVENTS_PUBLISHER_OPENFGA_CLIENT_ID=openfga-publisher
+KC_SPI_EVENTS_LISTENER_OPENFGA_EVENTS_PUBLISHER_OPENFGA_CLIENT_SECRET=<client secret>
+KC_SPI_EVENTS_LISTENER_OPENFGA_EVENTS_PUBLISHER_OPENFGA_API_TOKEN_ISSUER=https://keycloak.example.com/realms/my-realm/protocol/openid-connect/token
+KC_SPI_EVENTS_LISTENER_OPENFGA_EVENTS_PUBLISHER_OPENFGA_API_AUDIENCE=openfga
+```
+
+The issuer must match exactly: the `iss` of the tokens Keycloak issues is the URL OpenFGA is configured with.
+
+</details>
 
 Then enable the extension in each realm: Realm settings > Events > add `openfga-events-publisher` to the Event Listeners.
 

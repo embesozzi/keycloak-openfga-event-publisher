@@ -2,6 +2,7 @@ package com.twogenidentity.keycloak.utils;
 
 import com.twogenidentity.keycloak.event.EventParser;
 import dev.openfga.sdk.api.client.model.ClientTupleKey;
+import dev.openfga.sdk.api.client.model.ClientTupleKeyWithoutCondition;
 import dev.openfga.sdk.api.client.model.ClientWriteRequest;
 import dev.openfga.sdk.api.model.AuthorizationModel;
 import dev.openfga.sdk.api.model.RelationReference;
@@ -9,6 +10,7 @@ import dev.openfga.sdk.api.model.TypeDefinition;
 import dev.openfga.sdk.api.model.Userset;
 import org.jboss.logging.Logger;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -46,9 +48,7 @@ public class OpenFgaHelper {
         ClientWriteRequest client = new ClientWriteRequest();
 
         String eventObjectType  = event.getEventObjectType();
-        String eventObjectId = event.getEventObjectName();
         String eventUserType = event.getEventUserType();
-        String eventUserId   = event.getTranslateUserId();
 
         // Check if the authorization model handles this object type a.k.a TypeDefinition
         // Check if we have the relation for this object type and user type
@@ -56,19 +56,24 @@ public class OpenFgaHelper {
             && isRelationAvailableInModel(eventObjectType, eventUserType)) {
 
             String relation = getRelationFromModel(eventObjectType, eventUserType);
+            String user = eventUserType + ":" + event.getTranslateUserId();
 
-            ClientTupleKey tuple = new ClientTupleKey()
-                    .user(eventUserType + ":" +  eventUserId)
-                    .relation(relation)
-                    ._object(eventObjectType +":"+ eventObjectId);
-
-            LOG.debugf("Tuple %s %s %s",  tuple.getUser(), tuple.getRelation(), tuple.getObject());
+            // One tuple per object: several roles can be assigned or removed in one call
+            List<ClientTupleKey> tuples = new ArrayList<>();
+            for (String eventObjectId : event.getEventObjectNames()) {
+                ClientTupleKey tuple = new ClientTupleKey()
+                        .user(user)
+                        .relation(relation)
+                        ._object(eventObjectType + ":" + eventObjectId);
+                LOG.debugf("Tuple %s %s %s",  tuple.getUser(), tuple.getRelation(), tuple.getObject());
+                tuples.add(tuple);
+            }
 
             if(event.isWriteOperation()) {
-                client.writes(List.of(tuple));
+                client.writes(tuples);
             }
             else if(event.isDeleteOperation()) {
-                client.deletes(List.of(tuple));
+                client.deletes(new ArrayList<ClientTupleKeyWithoutCondition>(tuples));
             }
         }
         else {

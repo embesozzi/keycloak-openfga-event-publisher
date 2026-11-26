@@ -15,11 +15,14 @@ module.exports = {
   
     excludeTypes: ["other"],
   
-    renderTypeSection: function (label, commits) {
+    renderTypeSection: function (label, commits, includeCommitBody) {
       let text = `\n## ${label}\n`;
       commits.forEach((commit) => {
         const scope = commit.scope ? `**${commit.scope}**: ` : ''
         text += `- [\`${commit.sha.substring(0, 7)}\`](${commit.url}) ${scope} ${commit.subject}\n`;
+        if (commit.body && includeCommitBody) {
+          text += commit.body.split("\n").map((line) => `  ${line}`).join("\n") + "\n";
+        }
       });
       return text;
     },

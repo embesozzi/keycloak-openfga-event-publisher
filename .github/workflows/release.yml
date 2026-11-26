@@ -85,6 +85,7 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           exclude_types: other,doc,chore
+          include_commit_body: true
           config_file: .github/tag-changelog-config.js
 
       - name: Create release

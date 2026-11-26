@@ -2,6 +2,7 @@ package com.twogenidentity.keycloak;
 
 import com.twogenidentity.keycloak.event.EventParser;
 import com.twogenidentity.keycloak.utils.OpenFgaHelper;
+import com.twogenidentity.keycloak.utils.OpenFgaIdentifier;
 import dev.openfga.sdk.api.client.ApiClient;
 import dev.openfga.sdk.api.model.AuthorizationModel;
 import org.keycloak.events.admin.AdminEvent;
@@ -9,6 +10,7 @@ import org.keycloak.events.admin.AuthDetails;
 import org.keycloak.events.admin.OperationType;
 import org.keycloak.events.admin.ResourceType;
 import org.keycloak.models.ClientModel;
+import org.keycloak.models.GroupModel;
 import org.keycloak.models.KeycloakContext;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
@@ -38,10 +40,15 @@ public final class OpenFgaFixture {
     public static final String ROLE_ADMIN_CATALOG_ID = "role-id-admin-catalog";
     public static final String ROLE_ADMIN_CATALOG = "admin-catalog";
     public static final String ROLE_VIEW_PRODUCT = "view-product";
+    // A role name with a space, which OpenFGA does not accept as is
+    public static final String ROLE_ACCOUNT_MANAGER_ID = "role-id-account-manager";
+    public static final String ROLE_ACCOUNT_MANAGER = "Account Manager";
 
     // Groups
     public static final String GROUP_ID = "group-id-analysts";
     public static final String GROUP_NAME = "analysts";
+    public static final String GROUP_WITH_SPACE_ID = "group-id-sales-team";
+    public static final String GROUP_WITH_SPACE_NAME = "Sales Team";
 
     // A regular user
     public static final String USER_ID = "user-id-paula";
@@ -50,6 +57,11 @@ public final class OpenFgaFixture {
     public static final String SA_USER_ID = "user-id-service-account-store-api";
     public static final String SA_CLIENT_UUID = "client-uuid-store-api";
     public static final String SA_CLIENT_ID = "store-api";
+
+    // A service account whose clientId is a SPIFFE id: contains ':', which OpenFGA does not accept as is
+    public static final String SPIFFE_SA_USER_ID = "user-id-service-account-planner-agent";
+    public static final String SPIFFE_CLIENT_UUID = "client-uuid-planner-agent";
+    public static final String SPIFFE_CLIENT_ID = "spiffe://example.org/ns/agents/sa/planner-agent";
 
     private OpenFgaFixture() {
     }
@@ -68,6 +80,11 @@ public final class OpenFgaFixture {
 
     public static EventParser parser(AdminEvent event) {
         return new EventParser(event, session());
+    }
+
+    /** A parser that publishes with the given identifier: names (the default) or Keycloak ids. */
+    public static EventParser parser(AdminEvent event, OpenFgaIdentifier identifier) {
+        return new EventParser(event, session(), identifier);
     }
 
     /** An admin event as Keycloak emits it: resource path, operation and JSON representation. */
@@ -104,7 +121,7 @@ public final class OpenFgaFixture {
         return "{\"id\":\"" + id + "\",\"name\":\"" + name + "\",\"path\":\"/" + name + "\"}";
     }
 
-    /** A Keycloak session whose realm knows the fixture's roles, users and clients. */
+    /** A Keycloak session whose realm knows the fixture's roles, groups, users and clients. */
     public static KeycloakSession session() {
         RealmModel realm = mock(RealmModel.class);
         lenient().when(realm.getId()).thenReturn(REALM_ID);
@@ -112,22 +129,40 @@ public final class OpenFgaFixture {
         RoleModel adminCatalog = mock(RoleModel.class);
         lenient().when(adminCatalog.getName()).thenReturn(ROLE_ADMIN_CATALOG);
         lenient().when(realm.getRoleById(ROLE_ADMIN_CATALOG_ID)).thenReturn(adminCatalog);
+        RoleModel accountManager = mock(RoleModel.class);
+        lenient().when(accountManager.getName()).thenReturn(ROLE_ACCOUNT_MANAGER);
+        lenient().when(realm.getRoleById(ROLE_ACCOUNT_MANAGER_ID)).thenReturn(accountManager);
+
+        GroupModel analysts = mock(GroupModel.class);
+        lenient().when(analysts.getName()).thenReturn(GROUP_NAME);
+        lenient().when(realm.getGroupById(GROUP_ID)).thenReturn(analysts);
+        GroupModel salesTeam = mock(GroupModel.class);
+        lenient().when(salesTeam.getName()).thenReturn(GROUP_WITH_SPACE_NAME);
+        lenient().when(realm.getGroupById(GROUP_WITH_SPACE_ID)).thenReturn(salesTeam);
 
         ClientModel storeApi = mock(ClientModel.class);
         lenient().when(storeApi.getId()).thenReturn(SA_CLIENT_UUID);
         lenient().when(storeApi.getClientId()).thenReturn(SA_CLIENT_ID);
         lenient().when(realm.getClientById(SA_CLIENT_UUID)).thenReturn(storeApi);
+        ClientModel plannerAgent = mock(ClientModel.class);
+        lenient().when(plannerAgent.getId()).thenReturn(SPIFFE_CLIENT_UUID);
+        lenient().when(plannerAgent.getClientId()).thenReturn(SPIFFE_CLIENT_ID);
+        lenient().when(realm.getClientById(SPIFFE_CLIENT_UUID)).thenReturn(plannerAgent);
 
         UserModel paula = mock(UserModel.class);
         lenient().when(paula.getId()).thenReturn(USER_ID);
         UserModel serviceAccount = mock(UserModel.class);
         lenient().when(serviceAccount.getId()).thenReturn(SA_USER_ID);
         lenient().when(serviceAccount.getServiceAccountClientLink()).thenReturn(SA_CLIENT_UUID);
+        UserModel spiffeServiceAccount = mock(UserModel.class);
+        lenient().when(spiffeServiceAccount.getId()).thenReturn(SPIFFE_SA_USER_ID);
+        lenient().when(spiffeServiceAccount.getServiceAccountClientLink()).thenReturn(SPIFFE_CLIENT_UUID);
 
         UserProvider users = mock(UserProvider.class);
         lenient().when(users.getUserById(any(RealmModel.class), anyString())).thenReturn(null);
         lenient().when(users.getUserById(realm, USER_ID)).thenReturn(paula);
         lenient().when(users.getUserById(realm, SA_USER_ID)).thenReturn(serviceAccount);
+        lenient().when(users.getUserById(realm, SPIFFE_SA_USER_ID)).thenReturn(spiffeServiceAccount);
 
         RealmProvider realms = mock(RealmProvider.class);
         lenient().when(realms.getRealm(REALM_ID)).thenReturn(realm);

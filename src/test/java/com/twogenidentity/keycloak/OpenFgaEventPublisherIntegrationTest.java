@@ -12,7 +12,6 @@ import dev.openfga.sdk.api.model.WriteAuthorizationModelRequest;
 import jakarta.ws.rs.core.Response;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.keycloak.OAuth2Constants;
@@ -146,8 +145,7 @@ class OpenFgaEventPublisherIntegrationTest {
     }
 
     @Test
-    @Disabled("Bug, issue #4 (BACKLOG.md): group role mappings publish group:<id>, memberships publish group:<name>")
-    @DisplayName("Group role: members of the group are assignees of the role")
+    @DisplayName("Group role: members of the group are assignees of the role (issue #4)")
     void groupRole() throws Exception {
         String userId = createUser("mary");
         String groupId = createGroup("viewers");
@@ -171,7 +169,22 @@ class OpenFgaEventPublisherIntegrationTest {
     }
 
     @Test
-    @DisplayName("Service account client role writes client:<clientId> assignee role:<name>")
+    @DisplayName("Service account in a group: client:<clientId> assignee group:<name>, and inherits the group's roles")
+    void serviceAccountGroupMembership() throws Exception {
+        String clientUuid = createServiceAccountClient("billing-api");
+        String serviceAccountId = realm.clients().get(clientUuid).getServiceAccountUser().getId();
+        String groupId = createGroup("backend-services");
+        RoleRepresentation role = createRole("read-invoices");
+
+        realm.users().get(serviceAccountId).joinGroup(groupId);
+        realm.groups().group(groupId).roles().realmLevel().add(List.of(role));
+
+        await("membership written").until(() -> hasTuple("client:billing-api", "assignee", "group:backend-services"));
+        await("assignee inherited").until(() -> check("client:billing-api", "assignee", "role:read-invoices"));
+    }
+
+    @Test
+    @DisplayName("Service account client role writes client:<clientId> assignee role:<clientId>/<name>")
     void serviceAccountClientRole() throws Exception {
         String clientUuid = createServiceAccountClient("orders-api");
         String serviceAccountId = realm.clients().get(clientUuid).getServiceAccountUser().getId();
@@ -181,7 +194,49 @@ class OpenFgaEventPublisherIntegrationTest {
         RoleRepresentation role = realm.clients().get(clientUuid).roles().get("read-orders").toRepresentation();
 
         realm.users().get(serviceAccountId).roles().clientLevel(clientUuid).add(List.of(role));
-        await("tuple written").until(() -> hasTuple("client:orders-api", "assignee", "role:read-orders"));
+        await("tuple written").until(() -> hasTuple("client:orders-api", "assignee", "role:orders-api/read-orders"));
+    }
+
+    @Test
+    @DisplayName("Several roles assigned and removed in one call: one tuple per role")
+    void severalRolesInOneCall() throws Exception {
+        String userId = createUser("lucy");
+        RoleRepresentation reader = createRole("catalog-viewer");
+        RoleRepresentation writer = createRole("catalog-editor");
+
+        realm.users().get(userId).roles().realmLevel().add(List.of(reader, writer));
+        await("first role written").until(() -> hasTuple("user:" + userId, "assignee", "role:catalog-viewer"));
+        await("second role written").until(() -> hasTuple("user:" + userId, "assignee", "role:catalog-editor"));
+
+        realm.users().get(userId).roles().realmLevel().remove(List.of(reader, writer));
+        await("first role deleted").until(() -> !hasTuple("user:" + userId, "assignee", "role:catalog-viewer"));
+        await("second role deleted").until(() -> !hasTuple("user:" + userId, "assignee", "role:catalog-editor"));
+    }
+
+    @Test
+    @DisplayName("Role and group names with spaces are published percent-encoded")
+    void namesWithSpaces() throws Exception {
+        String userId = createUser("sam");
+        RoleRepresentation role = createRole("Account Manager");
+        String groupId = createGroup("Sales Team");
+
+        realm.users().get(userId).roles().realmLevel().add(List.of(role));
+        realm.users().get(userId).joinGroup(groupId);
+
+        await("role tuple written").until(() -> hasTuple("user:" + userId, "assignee", "role:Account%20Manager"));
+        await("group tuple written").until(() -> hasTuple("user:" + userId, "assignee", "group:Sales%20Team"));
+    }
+
+    @Test
+    @DisplayName("Service account with a SPIFFE clientId is published percent-encoded: client:spiffe%3A%2F%2F...")
+    void spiffeServiceAccount() throws Exception {
+        String clientUuid = createServiceAccountClient("spiffe://example.org/ns/agents/sa/planner-agent");
+        String serviceAccountId = realm.clients().get(clientUuid).getServiceAccountUser().getId();
+        RoleRepresentation role = createRole("support-agent");
+
+        realm.users().get(serviceAccountId).roles().realmLevel().add(List.of(role));
+        await("tuple written").until(() ->
+                hasTuple("client:spiffe%3A%2F%2Fexample.org%2Fns%2Fagents%2Fsa%2Fplanner-agent", "assignee", "role:support-agent"));
     }
 
     // --- Keycloak ---

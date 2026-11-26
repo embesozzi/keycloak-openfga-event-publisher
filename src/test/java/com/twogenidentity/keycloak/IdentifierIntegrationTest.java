@@ -1,7 +1,7 @@
 package com.twogenidentity.keycloak;
 
 import dasniko.testcontainers.keycloak.KeycloakContainer;
-import dev.openfga.sdk.api.client.ApiClient;
+import dev.openfga.sdk.api.client.JsonSerializer;
 import dev.openfga.sdk.api.client.OpenFgaClient;
 import dev.openfga.sdk.api.client.model.ClientReadRequest;
 import dev.openfga.sdk.api.configuration.ClientConfiguration;
@@ -44,8 +44,8 @@ import static org.awaitility.Awaitility.await;
 @Testcontainers(disabledWithoutDocker = true)
 class IdentifierIntegrationTest {
 
-    private static final String KEYCLOAK_IMAGE = System.getProperty("keycloak.image", "quay.io/keycloak/keycloak:25.0.1");
-    private static final String OPENFGA_IMAGE = System.getProperty("openfga.image", "openfga/openfga:v1.5.5");
+    private static final String KEYCLOAK_IMAGE = System.getProperty("keycloak.image", "quay.io/keycloak/keycloak:26.8.2");
+    private static final String OPENFGA_IMAGE = System.getProperty("openfga.image", "openfga/openfga:v1.23.0");
     private static final String PROVIDER_JAR = "target/keycloak-openfga-event-publisher.jar";
     private static final String REALM = "it";
 
@@ -64,7 +64,7 @@ class IdentifierIntegrationTest {
             .withNetwork(NETWORK)
             .dependsOn(OPENFGA)
             .withProviderLibsFrom(List.of(new File(PROVIDER_JAR)))
-            .withRealmImportFile("/integration-test-realm.json")
+            .withRealmImportFile("/it-realm.json")
             .withEnv("KC_SPI_EVENTS_LISTENER_OPENFGA_EVENTS_PUBLISHER_OPENFGA_IDENTIFIER", "id")
             .withEnv("KC_LOG_LEVEL", "info,com.twogenidentity.keycloak:debug")
             .withLogConsumer(frame -> {
@@ -83,7 +83,7 @@ class IdentifierIntegrationTest {
         openfga = new OpenFgaClient(new ClientConfiguration()
                 .apiUrl("http://" + OPENFGA.getHost() + ":" + OPENFGA.getMappedPort(8080)));
         openfga.setStoreId(openfga.createStore(new CreateStoreRequest().name("keycloak")).get().getId());
-        WriteAuthorizationModelRequest model = new ApiClient().getObjectMapper()
+        WriteAuthorizationModelRequest model = JsonSerializer.createDefault()
                 .readValue(Files.readString(Path.of("model.json")), WriteAuthorizationModelRequest.class);
         openfga.setAuthorizationModelId(openfga.writeAuthorizationModel(model).get().getAuthorizationModelId());
 

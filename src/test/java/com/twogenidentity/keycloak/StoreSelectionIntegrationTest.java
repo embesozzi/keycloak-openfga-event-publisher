@@ -1,7 +1,7 @@
 package com.twogenidentity.keycloak;
 
 import dasniko.testcontainers.keycloak.KeycloakContainer;
-import dev.openfga.sdk.api.client.ApiClient;
+import dev.openfga.sdk.api.client.JsonSerializer;
 import dev.openfga.sdk.api.client.OpenFgaClient;
 import dev.openfga.sdk.api.client.model.ClientReadRequest;
 import dev.openfga.sdk.api.configuration.ClientConfiguration;
@@ -41,8 +41,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 @Testcontainers(disabledWithoutDocker = true)
 class StoreSelectionIntegrationTest {
 
-    private static final String KEYCLOAK_IMAGE = System.getProperty("keycloak.image", "quay.io/keycloak/keycloak:25.0.1");
-    private static final String OPENFGA_IMAGE = System.getProperty("openfga.image", "openfga/openfga:v1.5.5");
+    private static final String KEYCLOAK_IMAGE = System.getProperty("keycloak.image", "quay.io/keycloak/keycloak:26.8.2");
+    private static final String OPENFGA_IMAGE = System.getProperty("openfga.image", "openfga/openfga:v1.23.0");
     private static final String PROVIDER_JAR = "target/keycloak-openfga-event-publisher.jar";
     private static final String CONFIG = "KC_SPI_EVENTS_LISTENER_OPENFGA_EVENTS_PUBLISHER_";
     private static final String REALM = "it";
@@ -120,7 +120,7 @@ class StoreSelectionIntegrationTest {
         KeycloakContainer keycloak = new KeycloakContainer(KEYCLOAK_IMAGE)
                 .withNetwork(network)
                 .withProviderLibsFrom(List.of(new File(PROVIDER_JAR)))
-                .withRealmImportFile("/integration-test-realm.json")
+                .withRealmImportFile("/it-realm.json")
                 .withEnv("KC_LOG_LEVEL", "info,com.twogenidentity.keycloak:debug")
                 .withEnv(config)
                 .withLogConsumer(frame -> {
@@ -168,13 +168,13 @@ class StoreSelectionIntegrationTest {
     private static Store createStore(OpenFgaClient fga, String name) throws Exception {
         String storeId = fga.createStore(new CreateStoreRequest().name(name)).get().getId();
         fga.setStoreId(storeId);
-        WriteAuthorizationModelRequest model = new ApiClient().getObjectMapper()
+        WriteAuthorizationModelRequest model = JsonSerializer.createDefault()
                 .readValue(Files.readString(Path.of("model.json")), WriteAuthorizationModelRequest.class);
         return new Store(storeId, fga.writeAuthorizationModel(model).get().getAuthorizationModelId());
     }
 
     private static boolean hasTuple(OpenFgaClient fga, Store store, String user, String object) throws Exception {
-        fga.setStoreId(store.id()); // SDK 0.5.0 has no per-request store id
+        fga.setStoreId(store.id()); // reads have no per-request store id in the SDK
         List<Tuple> tuples = fga.read(new ClientReadRequest().user(user).relation("assignee")._object(object))
                 .get().getTuples();
         return tuples != null && !tuples.isEmpty();

@@ -20,15 +20,13 @@ services:
     ports:
       - 5433:5432
   keycloak:
-    image: quay.io/keycloak/keycloak:25.0.1
+    image: quay.io/keycloak/keycloak:26.8.2
     container_name: keycloak
     command:
       - start-dev
     environment:
-      KEYCLOAK_USER: admin
-      KEYCLOAK_PASSWORD: password
-      KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: password
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: password
       KC_DB_URL_HOST: postgres
       KC_DB_URL_DATABASE: keycloak
       KC_DB_SCHEMA: public
@@ -75,7 +73,7 @@ services:
     depends_on:
       postgres-openfga:
         condition: service_healthy
-    image: openfga/openfga:v1.5.5
+    image: openfga/openfga:v1.23.0
     container_name: migrate
     environment:
       - OPENFGA_DATASTORE_ENGINE=postgres
@@ -88,7 +86,7 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
-    image: openfga/openfga:v1.5.5
+    image: openfga/openfga:v1.23.0
     container_name: openfga
     command: run
     environment:

@@ -3,7 +3,7 @@ package com.twogenidentity.keycloak;
 import com.twogenidentity.keycloak.event.EventParser;
 import com.twogenidentity.keycloak.utils.OpenFgaHelper;
 import com.twogenidentity.keycloak.utils.OpenFgaIdentifier;
-import dev.openfga.sdk.api.client.ApiClient;
+import dev.openfga.sdk.api.client.JsonSerializer;
 import dev.openfga.sdk.api.model.AuthorizationModel;
 import org.keycloak.events.admin.AdminEvent;
 import org.keycloak.events.admin.AuthDetails;
@@ -68,7 +68,7 @@ public final class OpenFgaFixture {
 
     /** The authorization model shipped in the repository, as OpenFGA returns it. */
     public static AuthorizationModel model() throws Exception {
-        return new ApiClient().getObjectMapper()
+        return JsonSerializer.createDefault()
                 .readValue(Files.readString(Path.of("model.json")), AuthorizationModel.class);
     }
 

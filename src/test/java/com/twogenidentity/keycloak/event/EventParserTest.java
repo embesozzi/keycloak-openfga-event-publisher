@@ -68,4 +68,20 @@ class EventParserTest {
         assertEquals("user", parser.getEventUserType());
         assertEquals(USER_ID, parser.getTranslateUserId());
     }
+
+    @Test
+    @DisplayName("Organization member added with an unknown username is reported, not a NullPointerException")
+    void organizationMemberNotFound() {
+        var parser = parser(organizationMembership(CREATE, ORG_ID, ORG_ALIAS, "nobody", null));
+
+        assertThrows(IllegalArgumentException.class, parser::getEventUserId);
+    }
+
+    @Test
+    @DisplayName("Creating an organization itself is not a membership: rejected like other unhandled types")
+    void organizationCreateIsNotHandled() {
+        var parser = parser(event(ORGANIZATION, CREATE, "organizations/" + ORG_ID, organization(ORG_ID, ORG_ALIAS)));
+
+        assertThrows(IllegalArgumentException.class, parser::getEventObjectType);
+    }
 }

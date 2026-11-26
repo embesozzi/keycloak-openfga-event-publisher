@@ -112,7 +112,14 @@ Download the jar from the [releases](https://github.com/embesozzi/keycloak-openf
 * **Keycloak distribution:** copy the jar to the `providers` folder and run `bin/kc.sh build`.
 * **Container image:** mount or copy the jar to `/opt/keycloak/providers` (see [docker-compose.yml](docker-compose.yml)).
 
-Tested with Keycloak `25.0.1` and OpenFGA `v1.5.5`.
+### Compatibility
+
+| Extension | Keycloak | OpenFGA (tested) |
+|-----------|----------|------------------|
+| 3.0.x | 26.x (tested 26.0.8 and 26.8.2) | v1.23.0 |
+| 2.0.x | 25.x | v1.5.5 |
+| 1.1.x, 1.2.x | 25.x | v1.5.5 |
+| 1.0.x | 19.x | v1.3.1 |
 
 ## Configuration
 
@@ -212,6 +219,10 @@ Java: [`OpenFgaIds.encode`](src/main/java/com/twogenidentity/keycloak/utils/Open
 * **OpenFGA unavailable:** if a write fails, Keycloak logs it (`KC-SERVICES0085`) and the change is not published. There is no retry.
 * **Deletes and renames:** deleting or renaming a user, role, group or client does not update its tuples in OpenFGA.
 * **Admin events only:** default roles at registration, identity provider and LDAP mappers, and realm imports are not published.
+
+## Upgrading from 2.0
+
+* **Keycloak 26** is required. For Keycloak 25, stay on 2.0.x.
 
 ## Upgrading from 1.2
 

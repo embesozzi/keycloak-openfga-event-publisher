@@ -11,6 +11,13 @@ permissions:
 
 jobs:
   test:
+    # The supported range: the oldest and the newest tested Keycloak (see Compatibility in the README)
+    strategy:
+      fail-fast: false
+      matrix:
+        keycloak: ['26.0.8', '26.8.2']
+        openfga: ['v1.23.0']
+    name: test (Keycloak ${{ matrix.keycloak }}, OpenFGA ${{ matrix.openfga }})
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -24,13 +31,16 @@ jobs:
 
       # Unit tests, then integration tests with Keycloak and OpenFGA in Docker (Testcontainers)
       - name: Unit and integration tests
-        run: mvn -B verify
+        run: >-
+          mvn -B verify
+          -Dkeycloak.image=quay.io/keycloak/keycloak:${{ matrix.keycloak }}
+          -Dopenfga.image=openfga/openfga:${{ matrix.openfga }}
 
       - name: Test reports
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: test-reports
+          name: test-reports-keycloak-${{ matrix.keycloak }}
           path: |
             target/surefire-reports
             target/failsafe-reports

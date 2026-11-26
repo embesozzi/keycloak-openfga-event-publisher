@@ -13,7 +13,8 @@
       "publicClient": false,
       "serviceAccountsEnabled": true,
       "standardFlowEnabled": false,
-      "directAccessGrantsEnabled": false
+      "directAccessGrantsEnabled": false,
+      "defaultClientScopes": ["kc-admin-api", "roles", "basic"]
     }
   ],
   "users": [

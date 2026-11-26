@@ -1,18 +1,42 @@
 # Keycloak OpenFGA Event Publisher
 
-This is a Keycloak extension that implements an Event Listener Provider to detect identity events and publish them to the OpenFGA server over HTTP, using the [OpenFGA Java SDK](https://github.com/openfga/java-sdk).
-It provides a direct integration between [Keycloak](https://www.keycloak.org/) and [OpenFGA](https://openfga.dev/). OpenFGA is an open source solution for Fine-Grained Authorization that applies the concept of ReBAC (Relationship-Based Access Control), created by Auth0 and inspired by Google Zanzibar.
+A Keycloak extension that keeps [OpenFGA](https://openfga.dev/) in sync with [Keycloak](https://www.keycloak.org/): when an administrator assigns a role, adds a role to a composite or adds a user to a group, the extension publishes the matching relationship tuple to OpenFGA. Apps and APIs then use OpenFGA to check permissions.
 
-The extension follows these steps:
+Tuples follow this authorization model ([model.dsl](model.dsl), [JSON](model.json)):
 
-1. Listens to the Keycloak events of its identity, role and group model (e.g., User Role Assignment, Role to Role Assignment, etc.).
+```
+model
+  schema 1.1
+type user
+type client
+type group
+  relations
+    define assignee: [user, client]
+type role
+  relations
+    define assignee: [user, client] or assignee from parent or assignee from parent_group
+    define parent: [role]
+    define parent_group: [group]
+```
 
-2. Converts these events into OpenFGA tuple keys based on the [Keycloak authorization model](model.dsl) ([JSON](model.json)):
-<p align="center">
-  <img width="70%" height="70%" src="images/openfga-authz-model.png">
-</p>
+The same model as a graph. Each arrow is a tuple, read as `user --relation--> object`:
 
-3. Publishes the tuple keys to OpenFGA using the [OpenFGA Java SDK](https://github.com/openfga/java-sdk). Apps and APIs can then use OpenFGA as a PDP (Policy Decision Point) to enforce the authorization policies.
+```mermaid
+graph LR
+  user((user))
+  client((client))
+  group((group))
+  role((role))
+
+  user -- assignee --> role
+  client -- assignee --> role
+  user -- assignee --> group
+  client -- assignee --> group
+  group -- parent_group --> role
+  role -- parent --> role
+```
+
+OpenFGA resolves the inheritance: the assignees of a role include the assignees of its parent roles and the members of the groups that have the role.
 
 ## Quick Start
 
@@ -25,7 +49,7 @@ mvn clean package
 docker compose up -d
 ```
 
-[docker-compose.yml](docker-compose.yml) starts Keycloak with the extension on http://localhost:9080 (`admin` / `password`) and OpenFGA on http://localhost:8080. The `openfga-import` service creates the `keycloak` store with the [authorization model](model.dsl) ([openfga-store.yaml](openfga-store.yaml)).
+Keycloak runs on http://localhost:9080 (`admin` / `password`) and OpenFGA on http://localhost:8080, with a store named `keycloak` and the authorization model.
 
 **2. Enable the extension and make some changes**
 
@@ -47,14 +71,16 @@ kcadm add-roles -r master --uusername paula --rolename admin-catalog
 
 </details>
 
-**3. See the tuples in OpenFGA**
+**3. Check in OpenFGA**
 
 ```shell
 STORE_ID=$(curl -s http://localhost:8080/stores | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
-curl -s -X POST http://localhost:8080/stores/$STORE_ID/read -H "Content-Type: application/json" -d '{}'
-```
+PAULA_ID=...   # paula's user id, from the Admin Console (Users > paula)
 
-The store now holds `role:admin-catalog parent role:view-product` and `user:<paula's user id> assignee role:admin-catalog`. See the [example](#example) to check her permissions.
+curl -s -X POST http://localhost:8080/stores/$STORE_ID/check -H "Content-Type: application/json" \
+  -d "{\"tuple_key\": {\"user\": \"user:$PAULA_ID\", \"relation\": \"assignee\", \"object\": \"role:view-product\"}}"
+# {"allowed":true, ...}  paula has view-product through admin-catalog
+```
 
 **4. Stop the demo**
 
@@ -63,127 +89,44 @@ docker compose down -v
 ```
 
 ## How does it work?
-The extension listens to the Keycloak Admin Events related to the identity, role and group model:
 
-<p align="center">
-  <img width="40%" height="40%" src="images/listener.png">
-</p>
+The extension listens to Keycloak admin events and publishes one tuple per change: a write when something is assigned, a delete when it is removed.
 
-1. Parses and enriches the Keycloak admin events in the table below.
-2. Transforms each event into an OpenFGA `ClientWriteRequest` with the OpenFGA Java SDK: a tuple write when the assignment is created, a tuple delete when it is removed.
-3. Publishes the `ClientWriteRequest` to the OpenFGA server over HTTP (`fgaClient.write(request)`) with the [OpenFGA SDK client](https://github.com/openfga/java-sdk).
+| Keycloak change | OpenFGA tuple |
+|-----------------|---------------|
+| A user is assigned a role | `user:<userId>` `assignee` `role:<role>` |
+| A role is added to a composite role | `role:<parentRole>` `parent` `role:<childRole>` |
+| A group is assigned a role | `group:<group>` `parent_group` `role:<role>` |
+| A user joins a group | `user:<userId>` `assignee` `group:<group>` |
+| A client's service account is assigned a role | `client:<clientId>` `assignee` `role:<role>` |
+| A client's service account joins a group | `client:<clientId>` `assignee` `group:<group>` |
 
-| Keycloak Event | Description | OpenFGA Tuple Key |
-|----------------|-------------|-------------------|
-| User Role Assignment | A user is assigned a realm role | `user:<userId>` `assignee` `role:<roleName>` |
-| Role to Role Assignment | A role is added to a composite (parent) role | `role:<parentRole>` `parent` `role:<childRole>` |
-| Group to Role Assignment | A group is assigned a realm role (see [Known limitations](#known-limitations)) | `group:<group>` `parent_group` `role:<roleName>` |
-| User Group Membership | A user joins a group | `user:<userId>` `assignee` `group:<groupName>` |
-| Service Account Role Assignment | A client's service account is assigned a realm or client role | `client:<clientId>` `assignee` `role:<roleName>` |
+Roles, groups and clients are identified by name by default; see [Identifiers in OpenFGA](#identifiers-in-openfga).
 
-These are the events handled by the provided [authorization model](model.dsl). You can edit the model to handle the events you need: an event is published only if the model has the matching relation.
-
-Only **admin events** are handled: changes made through the Admin Console, the Admin REST API or `kcadm.sh`. Changes made any other way publish nothing, for example the default roles given at user self-registration, mappers of identity providers or LDAP, and realm imports at startup.
-
-<details>
-<summary><b>Example</b>: from a role assignment to a permission check</summary>
-
-#### Example
-
-An administrator makes `admin-catalog` a composite role that contains `view-product`, then assigns `admin-catalog` to the user `paula`. The extension publishes:
-
-```
-role:admin-catalog       parent    role:view-product
-user:<paula's user id>   assignee  role:admin-catalog
-```
-
-An app can then ask OpenFGA whether `paula` has `view-product`, which she inherits through `admin-catalog`:
-
-```shell
-curl -X POST http://localhost:8080/stores/<store id>/check \
-  -H "Content-Type: application/json" \
-  -d '{"tuple_key": {"user": "user:<paula'\''s user id>", "relation": "assignee", "object": "role:view-product"}}'
-# {"allowed": true, ...}
-```
-
-</details>
-
-<details>
-<summary><b>Identifiers</b>: users by id, roles, groups and clients by name</summary>
-
-* Users are published by **id** (`user:<userId>`), the same value as the `sub` claim of their tokens, so apps can check with the subject of the token they receive.
-* Roles, groups and clients are published by **name** (`role:<roleName>`, `group:<groupName>`, `client:<clientId>`). Renaming one in Keycloak does not update the tuples already in OpenFGA.
-
-</details>
-
-<details>
-<summary><b>Solution Architecture Overview</b></summary>
-
-This extension improves the authorization architecture described in the article [Keycloak integration with OpenFGA (based on Zanzibar) for Fine-Grained Authorization at Scale (ReBAC)](https://embesozzi.medium.com/keycloak-integration-with-openfga-based-on-zanzibar-for-fine-grained-authorization-at-scale-d3376de00f9a)
-by enabling direct event synchronization between the Access Manager Platform and the OpenFGA Server.
-
-<p align="center">
-  <img width="70%" height="70%" src="images/solution-architecture.png">
-</p>
-
-* Core:
-    * Keycloak handles authentication with standard OpenID Connect and manages user access with its role model.
-    * Keycloak runs this extension, which listens to the Keycloak events, parses each event into an OpenFGA tuple based on the [Keycloak authorization model](model.dsl) and publishes it to OpenFGA over HTTP.
-    * OpenFGA applies fine-grained access control. It answers authorization checks by determining whether a relationship exists between an object and a user.
-* Other components (in the [workshop](https://github.com/embesozzi/keycloak-openfga-workshop)):
-    * The Store Web Application is integrated with Keycloak by OpenID Connect.
-    * The Store API is protected by OAuth 2.0 and uses the OpenFGA SDK for fine-grained authorization.
-
-</details>
-
-## Compatibility
-
-Tested with Keycloak `25.0.1` (Quarkus-based distribution) and OpenFGA `v1.5.5`.
+Only admin events are published: changes made in the Admin Console, the Admin REST API or `kcadm.sh`.
 
 ## How to install?
 
-Download a release (`*.jar` file) that works with your Keycloak version from the [list of releases](https://github.com/embesozzi/keycloak-openfga-event-publisher/releases), or build it:
+Download the jar from the [releases](https://github.com/embesozzi/keycloak-openfga-event-publisher/releases), or build it with `mvn clean package` (`target/keycloak-openfga-event-publisher.jar`).
 
-```shell
-mvn clean package
-```
+* **Keycloak distribution:** copy the jar to the `providers` folder and run `bin/kc.sh build`.
+* **Container image:** mount or copy the jar to `/opt/keycloak/providers` (see [docker-compose.yml](docker-compose.yml)).
 
-The jar is created at `target/keycloak-openfga-event-publisher.jar`.
+Tested with Keycloak `25.0.1` and OpenFGA `v1.5.5`.
 
-<details>
-<summary>Keycloak distribution</summary>
+## Configuration
 
-Copy the jar to the `providers` folder and run:
+Set with environment variables:
 
-```shell
-${kc.home.dir}/bin/kc.sh build
-```
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `KC_SPI_EVENTS_LISTENER_OPENFGA_EVENTS_PUBLISHER_OPENFGA_API_URL` | OpenFGA server URL | `http://openfga:8080` (demo only) |
+| `KC_SPI_EVENTS_LISTENER_OPENFGA_EVENTS_PUBLISHER_OPENFGA_STORE_NAME` | Name of the store to publish to | `keycloak` |
+| `KC_SPI_EVENTS_LISTENER_OPENFGA_EVENTS_PUBLISHER_OPENFGA_STORE_ID` | Store id, instead of the name | |
+| `KC_SPI_EVENTS_LISTENER_OPENFGA_EVENTS_PUBLISHER_OPENFGA_AUTHORIZATION_MODEL_ID` | Authorization model id | latest model of the store |
+| `KC_SPI_EVENTS_LISTENER_OPENFGA_EVENTS_PUBLISHER_OPENFGA_IDENTIFIER` | How roles, groups and clients are identified: `name` or `id` | `name` |
 
-</details>
-
-<details>
-<summary>Container image (Docker)</summary>
-
-Mount or copy the jar to `/opt/keycloak/providers`. See [docker-compose.yml](docker-compose.yml).
-
-</details>
-
-## Module Configuration
-The following properties can be set via environment variables following the Keycloak conventions. Each variable uses the prefix `KC_SPI_EVENTS_LISTENER_OPENFGA_EVENTS_PUBLISHER_`.
-
-* `KC_SPI_EVENTS_LISTENER_OPENFGA_EVENTS_PUBLISHER_OPENFGA_API_URL`: the URL of the OpenFGA server. If not set, the extension uses `http://openfga:8080`, for demo purposes only.
-
-* Optional `KC_SPI_EVENTS_LISTENER_OPENFGA_EVENTS_PUBLISHER_OPENFGA_STORE_ID` and `KC_SPI_EVENTS_LISTENER_OPENFGA_EVENTS_PUBLISHER_OPENFGA_AUTHORIZATION_MODEL_ID`: the store and authorization model identifiers in the OpenFGA server. If not set, the extension discovers them on the first event: it uses the first store and that store's latest authorization model.
-
-## Keycloak Configuration
-
-### Enable the OpenFGA Event Publisher extension in Keycloak
-Enable the extension in each realm:
-
-* Open the administration console
-* Choose the realm
-* Go to Realm settings
-* Select the `Events` tab and add `openfga-events-publisher` to Event Listeners
+Then enable the extension in each realm: Realm settings > Events > add `openfga-events-publisher` to the Event Listeners.
 
 <details>
 <summary>Screenshot</summary>
@@ -192,37 +135,103 @@ Enable the extension in each realm:
 
 </details>
 
-## Known limitations
+## Identifiers in OpenFGA
 
-* **Group to Role Assignment**: role mappings on a group publish the group id (`group:<groupId>`), while memberships publish the group name (`group:<groupName>`), so group members do not inherit the group's roles ([issue #4](https://github.com/embesozzi/keycloak-openfga-event-publisher/issues/4)).
-* **Explicit store and model ids**: when `..._OPENFGA_STORE_ID` and `..._OPENFGA_AUTHORIZATION_MODEL_ID` are set, discovery is skipped and the authorization model is not loaded, so events fail. Leave them unset to use discovery.
-* **Client roles** share the `role:<roleName>` namespace with realm roles, so a client role and a realm role with the same name map to the same OpenFGA object.
-* **OpenFGA unavailable**: each event is written to OpenFGA during the admin request, with a 5 second timeout. If OpenFGA is down or the write fails, Keycloak logs the error (`KC-SERVICES0085`) and the change is not published: there is no retry or resynchronization.
-* **Admin events only**: changes that do not produce Keycloak admin events are not published (see [How does it work?](#how-does-it-work)).
+Apps and PEPs (gateways, API middleware) must call OpenFGA with the same ids the extension publishes, or checks return `false`.
 
-## Testing
+| | `name` (default) | `id` |
+|--|------------------|------|
+| User | `user:<userId>` (the token's `sub`) | `user:<userId>` |
+| Realm role | `role:<roleName>` | `role:<roleId>` |
+| Client role | `role:<clientId>/<roleName>` | `role:<roleId>` |
+| Group | `group:<groupName>` | `group:<groupId>` |
+| Service account | `client:<clientId>` (the token's `azp`) | `client:<client internal id>` |
 
-Requires Java 17+ and Maven. The integration tests also need Docker.
+* **`name`**: ids can be built from tokens and configuration. Names are percent-encoded, see below.
+* **`id`**: ids survive renames, but a PEP needs the Keycloak ids of the roles, groups and clients it checks.
 
-```shell
-mvn test      # unit tests: Keycloak event in, OpenFGA tuple out
-mvn verify    # unit tests + integration tests
-```
+For a service-account token (client credentials), check `client:<azp>`, not `user:<sub>`: `sub` is the service account's internal user id, which is not published.
+
+To check a role, check the role you need: OpenFGA resolves composite roles and groups. Don't check every role of the token; some, such as `default-roles-<realm>`, are never published.
+
+### Encoding names
+
+OpenFGA does not accept `:`, `#` or spaces in ids. With `name`, each role, group and client name is percent-encoded ([RFC 3986](https://www.rfc-editor.org/rfc/rfc3986), UTF-8, uppercase hex) for these characters only: `%`, `/`, `:`, `#`, and control and space characters (Unicode `Cc`, `Zs`, `Zl`, `Zp`). Every other character is kept.
+
+| Keycloak name | OpenFGA id |
+|---------------|------------|
+| realm role `view-product` | `role:view-product` |
+| realm role `Account Manager` | `role:Account%20Manager` |
+| client role `read` of client `store-api` | `role:store-api/read` |
+| client `spiffe://example.org/agent` | `client:spiffe%3A%2F%2Fexample.org%2Fagent` |
+
+Generic URL encoders such as `encodeURIComponent` encode more characters. Use one of these instead:
 
 <details>
-<summary>About the integration tests</summary>
+<summary>JavaScript, Python, Go, Java</summary>
 
-The integration tests (`*IntegrationTest`) start Keycloak with the packaged extension and OpenFGA with [model.json](model.json) using [Testcontainers](https://testcontainers.com/), make changes through the Keycloak admin API, and check the resulting tuples and permissions in OpenFGA. They are skipped when Docker is not available. To test other versions:
-
-```shell
-mvn verify -Dkeycloak.image=quay.io/keycloak/keycloak:25.0.1 -Dopenfga.image=openfga/openfga:v1.5.5
+```javascript
+const ENCODE = /[%/:#\p{Cc}\p{Zs}\p{Zl}\p{Zp}]/u;
+const encode = (name) => Array.from(name)
+  .map((c) => ENCODE.test(c) ? encodeURIComponent(c) : c)
+  .join("");
 ```
+
+```python
+import unicodedata
+
+def encode(name: str) -> str:
+    return "".join(
+        "".join(f"%{b:02X}" for b in c.encode("utf-8"))
+        if c in "%/:#" or unicodedata.category(c) in ("Cc", "Zs", "Zl", "Zp") else c
+        for c in name)
+```
+
+```go
+func encode(name string) string {
+	var b strings.Builder
+	for _, r := range name {
+		if strings.ContainsRune("%/:#", r) || unicode.In(r, unicode.Cc, unicode.Zs, unicode.Zl, unicode.Zp) {
+			for _, c := range []byte(string(r)) {
+				fmt.Fprintf(&b, "%%%02X", c)
+			}
+		} else {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+```
+
+Java: [`OpenFgaIds.encode`](src/main/java/com/twogenidentity/keycloak/utils/OpenFgaIds.java).
 
 </details>
 
+## Known limitations
+
+* **OpenFGA unavailable:** if a write fails, Keycloak logs it (`KC-SERVICES0085`) and the change is not published. There is no retry.
+* **Deletes and renames:** deleting or renaming a user, role, group or client does not update its tuples in OpenFGA.
+* **Admin events only:** default roles at registration, identity provider and LDAP mappers, and realm imports are not published.
+
+## Upgrading from 1.2
+
+* **Client roles** are now `role:<clientId>/<roleName>` (were `role:<roleName>`).
+* **Names with `/`, `:`, `#` or spaces** are now percent-encoded.
+* **Group role assignments** now use the group name, like memberships (were the group id).
+* **Model:** `group#assignee` now accepts `client`, so service accounts can join groups. Write the new [model.dsl](model.dsl) to your store.
+* **Store:** the extension now uses the store named `keycloak` (was the first store). Set `..._OPENFGA_STORE_NAME` or `..._OPENFGA_STORE_ID` if yours has another name.
+
+## Testing
+
+```shell
+mvn test      # unit tests
+mvn verify    # unit and integration tests (needs Docker)
+```
+
+The integration tests run Keycloak and OpenFGA with [Testcontainers](https://testcontainers.com/). Other versions: `mvn verify -Dkeycloak.image=... -Dopenfga.image=...`.
+
 ## Demo and Articles
 
-* Workshop with the full demo environment: [keycloak-openfga-workshop](https://github.com/embesozzi/keycloak-openfga-workshop)
-* Articles:
-    * [Mastering Access Control: Low-Code Authorization with ReBAC, Decoupling Patterns and Policy as Code](https://embesozzi.medium.com/mastering-access-control-implementing-low-code-authorization-based-on-rebac-and-decoupling-pattern-f6f54f70115e)
-    * [Keycloak integration with OpenFGA based on Zanzibar for Fine-Grained Authorization at Scale (ReBAC)](https://medium.com/@embesozzi/keycloak-integration-with-openfga-based-on-zanzibar-for-fine-grained-authorization-at-scale-d3376de00f9a)
+* Full demo environment: [keycloak-openfga-workshop](https://github.com/embesozzi/keycloak-openfga-workshop)
+* [Keycloak integration with OpenFGA based on Zanzibar for Fine-Grained Authorization at Scale (ReBAC)](https://medium.com/@embesozzi/keycloak-integration-with-openfga-based-on-zanzibar-for-fine-grained-authorization-at-scale-d3376de00f9a)
+* [Mastering Access Control: Low-Code Authorization with ReBAC, Decoupling Patterns and Policy as Code](https://embesozzi.medium.com/mastering-access-control-implementing-low-code-authorization-based-on-rebac-and-decoupling-pattern-f6f54f70115e)

@@ -31,7 +31,7 @@ public class OpenFgaEventListenerProvider implements EventListenerProvider {
 		LOG.debugf("Admin event received onEvent(): %s ", adminEvent.toString());
 
 		try {
-			EventParser event = new EventParser(adminEvent, session);
+			EventParser event = new EventParser(adminEvent, session, client.getOpenFgaIdentifier());
 			LOG.debugf("Event parsed: %s ", event.toString());
 			client.publish(adminEvent.getId(), event);
 		} catch (IllegalArgumentException e) {
